@@ -1,0 +1,43 @@
+# Binaries and build outputs
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.exe.config
+*.dll.config
+
+# Benchmark artifacts
+BenchmarkDotNet.Artifacts/
+
+# Test results
+TestResults/
+*.trx
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# NuGet packages
+packages/
+
+# Rider
+.idea/
+
+# User-specific files
+*.user
+*.suo
+
+# Temporary files
+*.tmp
+*.temp
