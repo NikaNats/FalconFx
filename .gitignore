@@ -6,38 +6,86 @@ obj/
 *.pdb
 *.exe.config
 *.dll.config
+*.runtimeconfig.json
+*.deps.json
 
 # Benchmark artifacts
 BenchmarkDotNet.Artifacts/
+artifacts/
 
-# Test results
+# Test results and coverage
 TestResults/
 *.trx
+*.coverage
+*.coveragexml
+coverage.json
+coverage.opencover.xml
 
 # IDE files
 .vscode/
+.vs/
 .idea/
 *.swp
 *.swo
 *~
 
+# Visual Studio
+*.suo
+*.user
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.suo
+*.tlb
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# ReSharper
+*.DotSettings.user
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings
+
+# NuGet
+packages/
+.nuget/
+*.nupkg
+*.snupkg
+*.nuspec
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
 # OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Logs
 *.log
-
-# NuGet packages
-packages/
-
-# Rider
-.idea/
-
-# User-specific files
-*.user
-*.suo
+logs/
 
 # Temporary files
 *.tmp
 *.temp
+*.cache
+*.bak
+
+# Publish outputs
+publish/
+*.publishproj
