@@ -1,0 +1,172 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 1 benchmark(s) in total *****
+// ***** Building 1 exe(s) in Parallel: Start   *****
+// start dotnet  restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1/" /p:OutDir="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\bin\Release\net10.0/" /p:OutputPath="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\bin\Release\net10.0/" /p:PublishDir="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\publish/" in C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1
+// command took 1.13 sec and exited with 0
+// start dotnet  build -c Release --no-restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1/" /p:OutDir="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\bin\Release\net10.0/" /p:OutputPath="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\bin\Release\net10.0/" /p:PublishDir="C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\publish/" --output "C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\bin\Release\net10.0/" in C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1
+// command took 5.66 sec and exited with 0
+// ***** Done, took 00:00:06 (6.84 sec)   *****
+// Found 1 benchmarks:
+//   MatchingBenchmark.Match1000Orders: DefaultJob
+
+Setup power plan (GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c FriendlyName: High performance)
+// **************************
+// Benchmark: MatchingBenchmark.Match1000Orders: DefaultJob
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet MatchingEngine-DefaultJob-1.dll --anonymousPipes 1316 1360 --benchmarkName MatchingEngine.MatchingBenchmark.Match1000Orders --job Default --benchmarkId 0 in C:\Users\Nika\Downloads\FalconFX\src\MatchingEngine\bin\Release\net10.0\MatchingEngine-DefaultJob-1\bin\Release\net10.0
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.0 (10.0.0, 10.0.25.52411), X64 RyuJIT x86-64-v3
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL,AvxVnni,SERIALIZE VectorSize=256
+// Job: DefaultJob
+
+OverheadJitting  1: 1 op, 106500.00 ns, 106.5000 us/op
+WorkloadJitting  1: 1 op, 5672700.00 ns, 5.6727 ms/op
+
+OverheadJitting  2: 16 op, 152200.00 ns, 9.5125 us/op
+WorkloadJitting  2: 16 op, 47187300.00 ns, 2.9492 ms/op
+
+WorkloadPilot    1: 16 op, 45354100.00 ns, 2.8346 ms/op
+WorkloadPilot    2: 32 op, 87746100.00 ns, 2.7421 ms/op
+WorkloadPilot    3: 64 op, 163763900.00 ns, 2.5588 ms/op
+WorkloadPilot    4: 128 op, 313127800.00 ns, 2.4463 ms/op
+WorkloadPilot    5: 256 op, 611298600.00 ns, 2.3879 ms/op
+
+OverheadWarmup   1: 256 op, 2700.00 ns, 10.5469 ns/op
+OverheadWarmup   2: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadWarmup   3: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadWarmup   4: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadWarmup   5: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadWarmup   6: 256 op, 1100.00 ns, 4.2969 ns/op
+
+OverheadActual   1: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual   2: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual   3: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual   4: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual   5: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual   6: 256 op, 900.00 ns, 3.5156 ns/op
+OverheadActual   7: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual   8: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual   9: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual  10: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  11: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  12: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  13: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual  14: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  15: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  16: 256 op, 1000.00 ns, 3.9063 ns/op
+OverheadActual  17: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  18: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  19: 256 op, 1100.00 ns, 4.2969 ns/op
+OverheadActual  20: 256 op, 1100.00 ns, 4.2969 ns/op
+
+WorkloadWarmup   1: 256 op, 618864900.00 ns, 2.4174 ms/op
+WorkloadWarmup   2: 256 op, 627191200.00 ns, 2.4500 ms/op
+WorkloadWarmup   3: 256 op, 588233200.00 ns, 2.2978 ms/op
+WorkloadWarmup   4: 256 op, 625871300.00 ns, 2.4448 ms/op
+WorkloadWarmup   5: 256 op, 574162900.00 ns, 2.2428 ms/op
+WorkloadWarmup   6: 256 op, 610830800.00 ns, 2.3861 ms/op
+
+// BeforeActualRun
+WorkloadActual   1: 256 op, 613337000.00 ns, 2.3958 ms/op
+WorkloadActual   2: 256 op, 618333200.00 ns, 2.4154 ms/op
+WorkloadActual   3: 256 op, 627983100.00 ns, 2.4531 ms/op
+WorkloadActual   4: 256 op, 614468200.00 ns, 2.4003 ms/op
+WorkloadActual   5: 256 op, 622285500.00 ns, 2.4308 ms/op
+WorkloadActual   6: 256 op, 611630000.00 ns, 2.3892 ms/op
+WorkloadActual   7: 256 op, 705675500.00 ns, 2.7565 ms/op
+WorkloadActual   8: 256 op, 647817400.00 ns, 2.5305 ms/op
+WorkloadActual   9: 256 op, 614393200.00 ns, 2.4000 ms/op
+WorkloadActual  10: 256 op, 620034400.00 ns, 2.4220 ms/op
+WorkloadActual  11: 256 op, 613286300.00 ns, 2.3956 ms/op
+WorkloadActual  12: 256 op, 624209600.00 ns, 2.4383 ms/op
+WorkloadActual  13: 256 op, 625388700.00 ns, 2.4429 ms/op
+WorkloadActual  14: 256 op, 609105200.00 ns, 2.3793 ms/op
+WorkloadActual  15: 256 op, 640030400.00 ns, 2.5001 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 256 op, 613335900.00 ns, 2.3958 ms/op
+WorkloadResult   2: 256 op, 618332100.00 ns, 2.4154 ms/op
+WorkloadResult   3: 256 op, 627982000.00 ns, 2.4531 ms/op
+WorkloadResult   4: 256 op, 614467100.00 ns, 2.4003 ms/op
+WorkloadResult   5: 256 op, 622284400.00 ns, 2.4308 ms/op
+WorkloadResult   6: 256 op, 611628900.00 ns, 2.3892 ms/op
+WorkloadResult   7: 256 op, 614392100.00 ns, 2.4000 ms/op
+WorkloadResult   8: 256 op, 620033300.00 ns, 2.4220 ms/op
+WorkloadResult   9: 256 op, 613285200.00 ns, 2.3956 ms/op
+WorkloadResult  10: 256 op, 624208500.00 ns, 2.4383 ms/op
+WorkloadResult  11: 256 op, 625387600.00 ns, 2.4429 ms/op
+WorkloadResult  12: 256 op, 609104100.00 ns, 2.3793 ms/op
+WorkloadResult  13: 256 op, 640029300.00 ns, 2.5001 ms/op
+// GC:  0 0 0 5146624 256
+// Threading:  0 0 256
+
+// AfterAll
+// Benchmark Process 23796 has exited with code 0.
+
+Mean = 2.420 ms, StdErr = 0.009 ms (0.38%), N = 13, StdDev = 0.033 ms
+Min = 2.379 ms, Q1 = 2.396 ms, Median = 2.415 ms, Q3 = 2.438 ms, Max = 2.500 ms
+IQR = 0.042 ms, LowerFence = 2.332 ms, UpperFence = 2.502 ms
+ConfidenceInterval = [2.381 ms; 2.460 ms] (CI 99.9%), Margin = 0.040 ms (1.63% of Mean)
+Skewness = 0.9, Kurtosis = 3.05, MValue = 2
+
+// ** Remained 0 (0,0%) benchmark(s) to run. Estimated finish 2025-12-09 23:23 (0h 0m from now) **
+Successfully reverted power plan (GUID: 19cc9c30-81e8-4871-816e-364c5b911ef3 FriendlyName: ChrisTitus - Ultimate Power Plan)
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts\results\MatchingEngine.MatchingBenchmark-report.csv
+  BenchmarkDotNet.Artifacts\results\MatchingEngine.MatchingBenchmark-report-github.md
+  BenchmarkDotNet.Artifacts\results\MatchingEngine.MatchingBenchmark-report.html
+
+// * Detailed results *
+MatchingBenchmark.Match1000Orders: DefaultJob
+Runtime = .NET 10.0.0 (10.0.0, 10.0.25.52411), X64 RyuJIT x86-64-v3; GC = Concurrent Workstation
+Mean = 2.420 ms, StdErr = 0.009 ms (0.38%), N = 13, StdDev = 0.033 ms
+Min = 2.379 ms, Q1 = 2.396 ms, Median = 2.415 ms, Q3 = 2.438 ms, Max = 2.500 ms
+IQR = 0.042 ms, LowerFence = 2.332 ms, UpperFence = 2.502 ms
+ConfidenceInterval = [2.381 ms; 2.460 ms] (CI 99.9%), Margin = 0.040 ms (1.63% of Mean)
+Skewness = 0.9, Kurtosis = 3.05, MValue = 2
+-------------------- Histogram --------------------
+[2.361 ms ; 2.430 ms) | @@@@@@@@
+[2.430 ms ; 2.519 ms) | @@@@@
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.7309/25H2/2025Update/HudsonValley2)
+12th Gen Intel Core i7-12700H 2.30GHz, 1 CPU, 20 logical and 14 physical cores
+.NET SDK 10.0.100
+  [Host]     : .NET 10.0.0 (10.0.0, 10.0.25.52411), X64 RyuJIT x86-64-v3
+  DefaultJob : .NET 10.0.0 (10.0.0, 10.0.25.52411), X64 RyuJIT x86-64-v3
+
+
+| Method          | Mean     | Error     | StdDev    | Allocated |
+|---------------- |---------:|----------:|----------:|----------:|
+| Match1000Orders | 2.420 ms | 0.0395 ms | 0.0330 ms |  19.63 KB |
+
+// * Hints *
+Outliers
+  MatchingBenchmark.Match1000Orders: Default -> 2 outliers were removed (2.53 ms, 2.76 ms)
+
+// * Legends *
+  Mean      : Arithmetic mean of all measurements
+  Error     : Half of 99.9% confidence interval
+  StdDev    : Standard deviation of all measurements
+  Allocated : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  1 ms      : 1 Millisecond (0.001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:16 (16 sec), executed benchmarks: 1
+
+Global total time: 00:00:23 (23.21 sec), executed benchmarks: 1
+// * Artifacts cleanup *
+Artifacts cleanup is finished
