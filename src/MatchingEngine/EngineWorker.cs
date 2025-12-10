@@ -70,12 +70,13 @@ public class EngineWorker : BackgroundService
                 
                 Interlocked.Increment(ref _ordersProcessed); // +1 Order Processed
 
-                // FIX: Yield every 1000 orders to let Telemetry/HealthChecks run
+                // FIX: Yield every 5000 orders to let Telemetry/HealthChecks run
                 batchCount++;
-                if (batchCount >= 1000)
+                if (batchCount >= 5000)
                 {
                     batchCount = 0;
-                    await Task.Yield();
+                    // Force a real context switch to let the HTTP client breathe
+                    await Task.Delay(1); 
                 }
             }
         }

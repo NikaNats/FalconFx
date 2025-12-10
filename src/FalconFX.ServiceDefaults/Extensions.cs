@@ -99,21 +99,41 @@ public static class Extensions
 
         if (useOtlpExporter)
         {
-            // Define the HTTP Protobuf configuration
-            Action<OpenTelemetry.Exporter.OtlpExporterOptions> configureHttp = options => 
+            // 1. Configure Logging
+            builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter(options => 
+            {
                 options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+            }));
 
-            builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter(configureHttp));
-            builder.Services.ConfigureOpenTelemetryMeterProvider(metrics => metrics.AddOtlpExporter(configureHttp));
-            builder.Services.ConfigureOpenTelemetryTracerProvider(tracing => tracing.AddOtlpExporter(configureHttp));
+            // 2. Configure Metrics (The source of your error)
+            builder.Services.ConfigureOpenTelemetryMeterProvider(metrics => 
+            {
+                metrics.AddOtlpExporter(otlpOptions => 
+                {
+                    otlpOptions.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                });
+                
+                // CRITICAL: Configure the Metric Reader to send less frequently
+                // Default is often 1000ms (1 second). Raise it to 10 seconds.
+                // This prevents the "Response ended prematurely" error by reducing connection attempts.
+                metrics.Configure((provider, reader) => 
+                {
+                    if (reader is OpenTelemetry.Metrics.PeriodicExportingMetricReader periodicReader)
+                    {
+                        periodicReader.ExportIntervalMilliseconds = 10000; // Send every 10 seconds
+                    }
+                });
+            });
+
+            // 3. Configure Tracing
+            builder.Services.ConfigureOpenTelemetryTracerProvider(tracing => 
+            {
+                tracing.AddOtlpExporter(options => 
+                {
+                    options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                });
+            });
         }
-
-        // Uncomment the following lines to enable the Azure Monitor exporter (requires the Azure.Monitor.OpenTelemetry.AspNetCore package)
-        //if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
-        //{
-        //    builder.Services.AddOpenTelemetry()
-        //       .UseAzureMonitor();
-        //}
 
         return builder;
     }
