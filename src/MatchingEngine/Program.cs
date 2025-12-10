@@ -1,63 +1,65 @@
-﻿using FalconFX.ServiceDefaults;
+﻿using FalconFX.ServiceDefaults; // References your shared project
 using MatchingEngine;
 using MatchingEngine.Models;
-
-// Add this
-
-// Add this
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// 🔥 ASPIRE 13 INTEGRATION
-// This wires up OpenTelemetry, Metrics, and Health Checks automatically
+// 1. 🔥 Add Aspire Service Defaults 
+// This wires up OpenTelemetry, Metrics, and Service Discovery automatically.
 builder.AddServiceDefaults();
 
-// 2. 🔥 REGISTER CUSTOM METRICS & TRACES HERE
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(metrics => metrics
-        .AddMeter(Instrumentation.ServiceName)) // Listen to our custom Meter
-    .WithTracing(tracing => tracing
-        .AddSource(Instrumentation.ServiceName)); // Listen to our custom ActivitySource
-
-// Register the EngineWorker
+// 2. Register the Worker as a Singleton
+// We register it as Singleton first so we can retrieve it manually for the simulation loop below.
 builder.Services.AddSingleton<EngineWorker>();
+
+// 3. Add it as a Hosted Service so it starts automatically
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineWorker>());
 
 var host = builder.Build();
 
-// If you need access to the worker for the simulation loop in the main thread:
+// --- ⚡ SIMULATION LOGIC START ---
+
+// Retrieve the engine instance so we can push orders to it directly
 var engine = host.Services.GetRequiredService<EngineWorker>();
 
-// Start the host in the background
-var hostTask = host.RunAsync();
-
-// --- SIMULATION LOGIC ---
-// Note: In a real Aspire deployment, this traffic generation usually moves 
-// to a separate LoadTest project or the MarketMaker project.
-// For self-contained testing, keeping it here is fine.
-
-Console.WriteLine("Generating traffic...");
-
-var producerTask = Task.Run(() =>
+// Run the traffic generator in a background thread
+// In a real app, this logic would come from the 'MarketMaker' project via gRPC.
+_ = Task.Run(async () =>
 {
+    // Give the engine a moment to warm up/start
+    await Task.Delay(2000); 
+    
+    Console.WriteLine("⚡ Starting Traffic Simulation...");
+    
     var random = new Random();
-    // Reduced count slightly for visualization in Dashboard, increase for benchmarks
-    for (var i = 0; i < 100_000; i++)
+    
+    // We will generate 200,000 orders for this test run
+    for (var i = 0; i < 200_000; i++)
     {
         var side = random.Next(2) == 0 ? OrderSide.Buy : OrderSide.Sell;
-        var price = random.Next(90, 110);
+        
+        // Random price between 90 and 110 (Matching your array bounds)
+        var price = random.Next(90, 111); 
 
         var order = new Order(i, side, price, 10);
+        
+        // Push to the Engine's Channel
         engine.EnqueueOrder(order);
 
-        // Slight delay to visualize flow in Aspire Dashboard logs
-        if (i % 100 == 0) Thread.Sleep(10);
+        // OPTIONAL: Micro-sleep to make the graph in Aspire Dashboard look pretty (less spiky)
+        // Remove this line for maximum raw throughput testing.
+        if (i % 500 == 0) 
+        {
+            await Task.Delay(1); 
+        }
     }
 
-    Console.WriteLine("✅ Orders sent!");
+    Console.WriteLine("✅ Simulation Traffic Sent.");
 });
 
-await Task.WhenAll(producerTask);
+// --- ⚡ SIMULATION LOGIC END ---
 
-// Keep alive
-await hostTask;
+// Run the application (This blocks until stopped)
+await host.RunAsync();
