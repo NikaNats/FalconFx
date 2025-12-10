@@ -70,7 +70,8 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
             if (batchCount >= 5000)
             {
                 batchCount = 0;
-                await Task.Delay(1, token);
+                // Removed Task.Delay(1) - it was causing 15ms delays on Windows,
+                // artificially capping throughput. The Channel reader is already async.
             }
         }
     }

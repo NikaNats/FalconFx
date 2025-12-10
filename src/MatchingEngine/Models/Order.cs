@@ -1,6 +1,6 @@
 namespace MatchingEngine.Models;
 
-public class Order
+public struct Order
 {
     public Order(long id, OrderSide side, decimal price, decimal quantity)
     {

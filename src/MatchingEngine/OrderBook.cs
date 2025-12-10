@@ -23,8 +23,16 @@ public class OrderBook
 
     public void ProcessOrder(Order incomingOrder, TradeCallback onTrade)
     {
-        var oppositeBook = incomingOrder.Side == OrderSide.Buy ? _asks : _bids;
         var priceIndex = (int)(incomingOrder.Price - 90);
+        
+        // Bounds checking to prevent crashes
+        if (priceIndex < 0 || priceIndex >= 21)
+        {
+            // Reject order - price out of range
+            return;
+        }
+        
+        var oppositeBook = incomingOrder.Side == OrderSide.Buy ? _asks : _bids;
         var scaledPrice = (long)incomingOrder.Price;
 
         while (incomingOrder.RemainingQuantity > 0 && (incomingOrder.Side == OrderSide.Buy ? _askCount : _bidCount) > 0)
