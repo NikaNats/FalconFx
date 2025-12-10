@@ -52,6 +52,7 @@ public class EngineWorker : BackgroundService
     private async Task RunMatchingEngineAsync(CancellationToken token)
     {
         var reader = _inputChannel.Reader;
+        int batchCount = 0; // Add this
 
         // სანამ არხში რამე ყრია
         while (await reader.WaitToReadAsync(token))
@@ -68,6 +69,14 @@ public class EngineWorker : BackgroundService
                 });
                 
                 Interlocked.Increment(ref _ordersProcessed); // +1 Order Processed
+
+                // FIX: Yield every 1000 orders to let Telemetry/HealthChecks run
+                batchCount++;
+                if (batchCount >= 1000)
+                {
+                    batchCount = 0;
+                    await Task.Yield();
+                }
             }
         }
     }
