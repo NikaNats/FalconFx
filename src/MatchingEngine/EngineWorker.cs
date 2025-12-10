@@ -55,6 +55,9 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
 
                 // 🔥 METRIC 1: Count Trade
                 Instrumentation.TradesCreated.Add(1);
+
+                // ✅ FIX: Increment local counter for console logging
+                Interlocked.Increment(ref _tradesCreated);
             });
 
             // 🔥 METRIC 2: Count Order
@@ -67,12 +70,9 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
             Interlocked.Increment(ref _ordersProcessed);
 
             batchCount++;
-            if (batchCount >= 5000)
-            {
-                batchCount = 0;
-                // Removed Task.Delay(1) - it was causing 15ms delays on Windows,
-                // artificially capping throughput. The Channel reader is already async.
-            }
+            if (batchCount >= 5000) batchCount = 0;
+            // Removed Task.Delay(1) - it was causing 15ms delays on Windows,
+            // artificially capping throughput. The Channel reader is already async.
         }
     }
 

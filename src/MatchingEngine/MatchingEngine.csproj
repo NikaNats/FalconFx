@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -9,10 +9,15 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" /> <!-- Update to 10.0 when available -->
+    <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" /> <!-- Update to 10.0 when available -->
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FalconFX.ServiceDefaults\FalconFX.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Server mode generates the base class we need to implement -->
+    <Protobuf Include="..\Protos\trading.proto" GrpcServices="Server" />
   </ItemGroup>
 </Project>

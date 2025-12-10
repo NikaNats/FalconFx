@@ -17,6 +17,26 @@ public static class Extensions
     private const string HealthEndpointPath = "/health";
     private const string AlivenessEndpointPath = "/alive";
 
+    // This method is only for Web Applications (APIs)
+    // Worker Services (Console Apps) will not call this.
+    public static WebApplication MapDefaultEndpoints(this WebApplication app)
+    {
+        // Adding health checks endpoints to applications in non-development environments has security implications.
+        if (app.Environment.IsDevelopment())
+        {
+            // All health checks must pass for app to be considered ready to accept traffic
+            app.MapHealthChecks(HealthEndpointPath);
+
+            // Only health checks tagged with the "live" tag must pass for app to be considered alive
+            app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
+            {
+                Predicate = r => r.Tags.Contains("live")
+            });
+        }
+
+        return app;
+    }
+
     extension<TBuilder>(TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         public TBuilder AddServiceDefaults()
@@ -29,10 +49,10 @@ public static class Extensions
 
             builder.Services.ConfigureHttpClientDefaults(http =>
             {
-                // Turn on resilience by default (Retry, Circuit Breaker, etc.)
-                http.AddStandardResilienceHandler();
+                // ❌ COMMENTED OUT: This forces a 10-second timeout on ALL requests, which kills gRPC streams.
+                // http.AddStandardResilienceHandler();
 
-                // Turn on service discovery by default
+                // ✅ KEEP THIS LINE: This ensures "https://matching-engine" resolves to the correct IP/Port.
                 http.AddServiceDiscovery();
             });
 
@@ -117,25 +137,5 @@ public static class Extensions
 
             return builder;
         }
-    }
-
-    // This method is only for Web Applications (APIs)
-    // Worker Services (Console Apps) will not call this.
-    public static WebApplication MapDefaultEndpoints(this WebApplication app)
-    {
-        // Adding health checks endpoints to applications in non-development environments has security implications.
-        if (app.Environment.IsDevelopment())
-        {
-            // All health checks must pass for app to be considered ready to accept traffic
-            app.MapHealthChecks(HealthEndpointPath);
-
-            // Only health checks tagged with the "live" tag must pass for app to be considered alive
-            app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
-            {
-                Predicate = r => r.Tags.Contains("live")
-            });
-        }
-
-        return app;
     }
 }

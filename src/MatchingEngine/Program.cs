@@ -1,65 +1,29 @@
-﻿using FalconFX.ServiceDefaults; // References your shared project
+﻿using FalconFX.ServiceDefaults;
 using MatchingEngine;
-using MatchingEngine.Models;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using MatchingEngine.Services;
 
-var builder = Host.CreateApplicationBuilder(args);
+// Shared project reference
 
-// 1. 🔥 Add Aspire Service Defaults 
-// This wires up OpenTelemetry, Metrics, and Service Discovery automatically.
+var builder = WebApplication.CreateBuilder(args);
+
+// 1. Add Aspire Defaults (Metrics, Tracing, HealthChecks)
 builder.AddServiceDefaults();
 
-// 2. Register the Worker as a Singleton
-// We register it as Singleton first so we can retrieve it manually for the simulation loop below.
-builder.Services.AddSingleton<EngineWorker>();
+// 2. Add gRPC Framework
+builder.Services.AddGrpc();
 
-// 3. Add it as a Hosted Service so it starts automatically
+// 3. Register our Singletons
+builder.Services.AddSingleton<EngineWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineWorker>());
 
-var host = builder.Build();
+var app = builder.Build();
 
-// --- ⚡ SIMULATION LOGIC START ---
+app.MapDefaultEndpoints();
 
-// Retrieve the engine instance so we can push orders to it directly
-var engine = host.Services.GetRequiredService<EngineWorker>();
+// 4. Expose the gRPC Endpoint
+app.MapGrpcService<GrpcOrderService>();
 
-// Run the traffic generator in a background thread
-// In a real app, this logic would come from the 'MarketMaker' project via gRPC.
-_ = Task.Run(async () =>
-{
-    // Give the engine a moment to warm up/start
-    await Task.Delay(2000); 
-    
-    Console.WriteLine("⚡ Starting Traffic Simulation...");
-    
-    var random = new Random();
-    
-    // We will generate 200,000 orders for this test run
-    for (var i = 0; i < 200_000; i++)
-    {
-        var side = random.Next(2) == 0 ? OrderSide.Buy : OrderSide.Sell;
-        
-        // Random price between 90 and 110 (Matching your array bounds)
-        var price = random.Next(90, 111); 
+// Optional: Informational endpoint
+app.MapGet("/", () => "FalconFX Matching Engine is running via gRPC");
 
-        var order = new Order(i, side, price, 10);
-        
-        // Push to the Engine's Channel
-        engine.EnqueueOrder(order);
-
-        // OPTIONAL: Micro-sleep to make the graph in Aspire Dashboard look pretty (less spiky)
-        // Remove this line for maximum raw throughput testing.
-        if (i % 500 == 0) 
-        {
-            await Task.Delay(1); 
-        }
-    }
-
-    Console.WriteLine("✅ Simulation Traffic Sent.");
-});
-
-// --- ⚡ SIMULATION LOGIC END ---
-
-// Run the application (This blocks until stopped)
-await host.RunAsync();
+await app.RunAsync();

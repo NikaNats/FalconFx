@@ -24,14 +24,12 @@ public class OrderBook
     public void ProcessOrder(Order incomingOrder, TradeCallback onTrade)
     {
         var priceIndex = (int)(incomingOrder.Price - 90);
-        
+
         // Bounds checking to prevent crashes
         if (priceIndex < 0 || priceIndex >= 21)
-        {
             // Reject order - price out of range
             return;
-        }
-        
+
         var oppositeBook = incomingOrder.Side == OrderSide.Buy ? _asks : _bids;
         var scaledPrice = (long)incomingOrder.Price;
 
@@ -61,13 +59,14 @@ public class OrderBook
             if (bestIndex == -1) break;
 
             long bestPrice = bestIndex + 90;
-            var headIdx = oppositeBook[bestIndex].Item1;
 
             var canMatch = incomingOrder.Side == OrderSide.Buy
                 ? bestPrice <= scaledPrice
                 : bestPrice >= scaledPrice;
 
             if (!canMatch) break;
+
+            var headIdx = oppositeBook[bestIndex].Item1;
 
             // Get first order in queue
             ref var makerOrder = ref _pool.Get(headIdx);

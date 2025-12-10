@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option csharp_namespace = "FalconFX.Protos";
+
+package trading;
+
+// The Order Service definition.
+service OrderService {
+  // Bi-directional streaming is also possible, but for raw ingestion speed,
+  // client-side streaming (Client writes many, Server reads many) is optimal.
+  rpc StreamOrders (stream SubmitOrderRequest) returns (SubmitOrderResponse);
+}
+
+// Optimized message structure (using int64 for scaled decimals to avoid floating point issues)
+message SubmitOrderRequest {
+  int64 id = 1;
+  int32 side = 2; // 1 = Buy, 2 = Sell
+  int64 price = 3; // Scaled Price (e.g., 105.50 -> 10550)
+  int64 quantity = 4; 
+}
+
+message SubmitOrderResponse {
+  bool success = 1;
+  string message = 2;
+}
