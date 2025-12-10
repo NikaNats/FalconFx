@@ -16,4 +16,4 @@ var marketMaker = builder.AddProject<MarketMaker>("market-maker")
     .WithReference(matchingEngine)
     .WaitFor(matchingEngine); // Aspire 13 Best Practice: Ensure Engine is up before MM starts
 
-builder.Build().Run();
+await builder.Build().RunAsync();

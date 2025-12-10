@@ -1,5 +1,6 @@
-using MatchingEngine;
 using MatchingEngine.Models;
+
+namespace MatchingEngine.Tests;
 
 public class OrderBookTests
 {
