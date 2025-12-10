@@ -3,31 +3,36 @@ using MatchingEngine.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-// ეს არის ჩვენი "Production" გაშვება
 var builder = Host.CreateApplicationBuilder(args);
 
-// სერვისის რეგისტრაცია (Singleton, რომ შეგვეძლოს წვდომა)
+// 🔥 ASPIRE 13 INTEGRATION
+// This wires up OpenTelemetry, Metrics, and Health Checks automatically
+builder.AddServiceDefaults();
+
+// Register the EngineWorker
 builder.Services.AddSingleton<EngineWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineWorker>());
 
 var host = builder.Build();
 
-// ვიღებთ რეფერენსს რომ ორდერები გავაგზავნოთ
+// If you need access to the worker for the simulation loop in the main thread:
 var engine = host.Services.GetRequiredService<EngineWorker>();
 
-// ვუშვებთ ჰოსტს ფონურ რეჟიმში
+// Start the host in the background
 var hostTask = host.RunAsync();
 
-Console.WriteLine("Generating traffic...");
+// --- SIMULATION LOGIC ---
+// Note: In a real Aspire deployment, this traffic generation usually moves 
+// to a separate LoadTest project or the MarketMaker project.
+// For self-contained testing, keeping it here is fine.
 
-// --- SIMULATION (Load Test) ---
-// გავუშვათ პარალელურად 2 თრედი, რომელიც ორდერებს ყრის
-// ეს არის "Kafka Consumer"-ის სიმულაცია
+Console.WriteLine("Generating traffic...");
 
 var producerTask = Task.Run(() => 
 {
     var random = new Random();
-    for (int i = 0; i < 1_000_000; i++) // 1 მილიონი ორდერი!
+    // Reduced count slightly for visualization in Dashboard, increase for benchmarks
+    for (int i = 0; i < 100_000; i++) 
     {
         var side = random.Next(2) == 0 ? OrderSide.Buy : OrderSide.Sell;
         var price = random.Next(90, 110);
@@ -35,13 +40,13 @@ var producerTask = Task.Run(() =>
         var order = new Order(i, side, price, 10);
         engine.EnqueueOrder(order);
         
-        // ცოტა "Noise" რომ რეალური იყოს
-        // Thread.Sleep(1); 
+        // Slight delay to visualize flow in Aspire Dashboard logs
+        if (i % 100 == 0) Thread.Sleep(10); 
     }
-    Console.WriteLine("✅ 1 Million orders sent!");
+    Console.WriteLine("✅ Orders sent!");
 });
 
 await Task.WhenAll(producerTask);
 
-Console.WriteLine("Press Enter to stop...");
-Console.ReadLine();
+// Keep alive
+await hostTask;
