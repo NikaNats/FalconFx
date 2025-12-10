@@ -99,36 +99,31 @@ public static class Extensions
 
         if (useOtlpExporter)
         {
-            // 1. Configure Logging
-            builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter(options => 
+            // 1. Configure Logging (Use HttpProtobuf for performance)
+            builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter(options =>
             {
                 options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
             }));
 
-            // 2. Configure Metrics (The source of your error)
-            builder.Services.ConfigureOpenTelemetryMeterProvider(metrics => 
+            // 2. Configure Metrics (FIXED SYNTAX)
+            builder.Services.ConfigureOpenTelemetryMeterProvider(metrics =>
             {
-                metrics.AddOtlpExporter(otlpOptions => 
+                // Use the overload that gives access to ReaderOptions
+                metrics.AddOtlpExporter((otlpOptions, readerOptions) =>
                 {
+                    // Use HTTP/Protobuf (more stable than gRPC under load)
                     otlpOptions.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-                });
-                
-                // CRITICAL: Configure the Metric Reader to send less frequently
-                // Default is often 1000ms (1 second). Raise it to 10 seconds.
-                // This prevents the "Response ended prematurely" error by reducing connection attempts.
-                metrics.Configure((provider, reader) => 
-                {
-                    if (reader is OpenTelemetry.Metrics.PeriodicExportingMetricReader periodicReader)
-                    {
-                        periodicReader.ExportIntervalMilliseconds = 10000; // Send every 10 seconds
-                    }
+
+                    // Send metrics every 10 seconds (10,000ms) instead of every 1 second
+                    // This prevents "Response ended prematurely" errors
+                    readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 10000;
                 });
             });
 
-            // 3. Configure Tracing
-            builder.Services.ConfigureOpenTelemetryTracerProvider(tracing => 
+            // 3. Configure Tracing (Use HttpProtobuf)
+            builder.Services.ConfigureOpenTelemetryTracerProvider(tracing =>
             {
-                tracing.AddOtlpExporter(options => 
+                tracing.AddOtlpExporter(options =>
                 {
                     options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
                 });
