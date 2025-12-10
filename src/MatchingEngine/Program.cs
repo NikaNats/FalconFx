@@ -2,12 +2,21 @@
 using MatchingEngine.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using OpenTelemetry.Metrics; // Add this
+using OpenTelemetry.Trace;   // Add this
 
 var builder = Host.CreateApplicationBuilder(args);
 
 // 🔥 ASPIRE 13 INTEGRATION
 // This wires up OpenTelemetry, Metrics, and Health Checks automatically
 builder.AddServiceDefaults();
+
+// 2. 🔥 REGISTER CUSTOM METRICS & TRACES HERE
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics
+        .AddMeter(Instrumentation.ServiceName)) // Listen to our custom Meter
+    .WithTracing(tracing => tracing
+        .AddSource(Instrumentation.ServiceName)); // Listen to our custom ActivitySource
 
 // Register the EngineWorker
 builder.Services.AddSingleton<EngineWorker>();

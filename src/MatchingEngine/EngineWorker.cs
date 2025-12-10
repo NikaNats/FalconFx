@@ -48,34 +48,39 @@ public class EngineWorker : BackgroundService
         await RunMatchingEngineAsync(stoppingToken);
     }
 
-    // --- THE GOLDEN THREAD (Single Threaded Logic) ---
     private async Task RunMatchingEngineAsync(CancellationToken token)
     {
         var reader = _inputChannel.Reader;
-        int batchCount = 0; // Add this
+        int batchCount = 0;
 
-        // სანამ არხში რამე ყრია
+        // Optional: Create a parent trace for the whole run
+        using var activity = Instrumentation.ActivitySource.StartActivity("MatchingLoop");
+
         while (await reader.WaitToReadAsync(token))
         {
             while (reader.TryRead(out var order))
             {
-                // 🔥 აქ ხდება მაგია!
-                // ეს კოდი ეშვება სინქრონულად, ლოქების გარეშე
                 _orderBook.ProcessOrder(order, trade => 
                 {
-                    // როცა გარიგება ხდება
                     _outputChannel.Writer.TryWrite(trade);
-                    Interlocked.Increment(ref _tradesCreated); // +1 Trade
+                    
+                    // 🔥 METRIC 1: Count Trade
+                    Instrumentation.TradesCreated.Add(1);
                 });
                 
-                Interlocked.Increment(ref _ordersProcessed); // +1 Order Processed
+                // 🔥 METRIC 2: Count Order
+                Instrumentation.OrdersProcessed.Add(1);
 
-                // FIX: Yield every 5000 orders to let Telemetry/HealthChecks run
+                // Performance Optimization:
+                // We removed Interlocked.Increment because OTel counters 
+                // handle thread safety for us, but if you still need the local long 
+                // for your console logs, keep Interlocked as well.
+                Interlocked.Increment(ref _ordersProcessed); 
+
                 batchCount++;
                 if (batchCount >= 5000)
                 {
                     batchCount = 0;
-                    // Force a real context switch to let the HTTP client breathe
                     await Task.Delay(1); 
                 }
             }

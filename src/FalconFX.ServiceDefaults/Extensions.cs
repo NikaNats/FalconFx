@@ -99,35 +99,25 @@ public static class Extensions
 
         if (useOtlpExporter)
         {
-            // 1. Configure Logging (Use HttpProtobuf for performance)
-            builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter(options =>
-            {
-                options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-            }));
+            // 1. Logging
+            builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter());
 
-            // 2. Configure Metrics (FIXED SYNTAX)
+            // 2. Metrics (The Critical Fix)
             builder.Services.ConfigureOpenTelemetryMeterProvider(metrics =>
             {
-                // Use the overload that gives access to ReaderOptions
                 metrics.AddOtlpExporter((otlpOptions, readerOptions) =>
                 {
-                    // Use HTTP/Protobuf (more stable than gRPC under load)
-                    otlpOptions.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                    // MUST use Grpc for Aspire Dashboard (it demands HTTP/2)
+                    otlpOptions.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
 
-                    // Send metrics every 10 seconds (10,000ms) instead of every 1 second
-                    // This prevents "Response ended prematurely" errors
-                    readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 10000;
+                    // HUGE DELAY: Only send metrics every 15 seconds. 
+                    // This prevents the engine from overwhelming the dashboard network stack.
+                    readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 15000;
                 });
             });
 
-            // 3. Configure Tracing (Use HttpProtobuf)
-            builder.Services.ConfigureOpenTelemetryTracerProvider(tracing =>
-            {
-                tracing.AddOtlpExporter(options =>
-                {
-                    options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-                });
-            });
+            // 3. Tracing
+            builder.Services.ConfigureOpenTelemetryTracerProvider(tracing => tracing.AddOtlpExporter());
         }
 
         return builder;
