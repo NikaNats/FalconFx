@@ -1,9 +1,10 @@
-﻿using MatchingEngine;
+﻿using FalconFX.ServiceDefaults;
+using MatchingEngine;
 using MatchingEngine.Models;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using OpenTelemetry.Metrics; // Add this
-using OpenTelemetry.Trace;   // Add this
+
+// Add this
+
+// Add this
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -37,21 +38,22 @@ var hostTask = host.RunAsync();
 
 Console.WriteLine("Generating traffic...");
 
-var producerTask = Task.Run(() => 
+var producerTask = Task.Run(() =>
 {
     var random = new Random();
     // Reduced count slightly for visualization in Dashboard, increase for benchmarks
-    for (int i = 0; i < 100_000; i++) 
+    for (var i = 0; i < 100_000; i++)
     {
         var side = random.Next(2) == 0 ? OrderSide.Buy : OrderSide.Sell;
         var price = random.Next(90, 110);
-        
+
         var order = new Order(i, side, price, 10);
         engine.EnqueueOrder(order);
-        
+
         // Slight delay to visualize flow in Aspire Dashboard logs
-        if (i % 100 == 0) Thread.Sleep(10); 
+        if (i % 100 == 0) Thread.Sleep(10);
     }
+
     Console.WriteLine("✅ Orders sent!");
 });
 

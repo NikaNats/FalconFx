@@ -10,8 +10,8 @@ public struct OrderNode
 
     // SOTA ნაწილი: "Intrusive" პოინტერები
     // ჩვენ არ ვიყენებთ OrderNode-ს რეფერენსებს, ვიყენებთ ინდექსებს მასივში
-    public int Next; 
+    public int Next;
     public int Prev;
-    
+
     // -1 ნიშნავს რომ არავინაა
 }

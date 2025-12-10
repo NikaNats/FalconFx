@@ -1,5 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using FalconFX.ServiceDefaults;
 
 var builder = Host.CreateApplicationBuilder(args);
 

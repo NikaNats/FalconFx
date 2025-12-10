@@ -7,13 +7,13 @@ public delegate void TradeCallback(Trade trade);
 
 public class OrderBook
 {
-    private readonly OrderPool _pool;
-    
+    private readonly (int, int)[] _asks = new (int, int)[21];
+
     // ფასი -> (Head Index, Tail Index) - Array for 90-110 prices
     private readonly (int head, int tail)[] _bids = new (int, int)[21];
-    private readonly (int, int)[] _asks = new (int, int)[21];
-    private int _bidCount;
+    private readonly OrderPool _pool;
     private int _askCount;
+    private int _bidCount;
 
     public OrderBook(int poolSize = 1000000)
     {
@@ -24,35 +24,39 @@ public class OrderBook
     public void ProcessOrder(Order incomingOrder, TradeCallback onTrade)
     {
         var oppositeBook = incomingOrder.Side == OrderSide.Buy ? _asks : _bids;
-        int priceIndex = (int)(incomingOrder.Price - 90);
-        long scaledPrice = (long)incomingOrder.Price;
+        var priceIndex = (int)(incomingOrder.Price - 90);
+        var scaledPrice = (long)incomingOrder.Price;
 
         while (incomingOrder.RemainingQuantity > 0 && (incomingOrder.Side == OrderSide.Buy ? _askCount : _bidCount) > 0)
         {
             // Find best price index
-            int bestIndex = -1;
+            var bestIndex = -1;
             if (incomingOrder.Side == OrderSide.Buy)
             {
-                for (int i = 0; i < 21; i++)
-                {
-                    if (_asks[i].Item1 != -1) { bestIndex = i; break; }
-                }
+                for (var i = 0; i < 21; i++)
+                    if (_asks[i].Item1 != -1)
+                    {
+                        bestIndex = i;
+                        break;
+                    }
             }
             else
             {
-                for (int i = 20; i >= 0; i--)
-                {
-                    if (_bids[i].head != -1) { bestIndex = i; break; }
-                }
+                for (var i = 20; i >= 0; i--)
+                    if (_bids[i].head != -1)
+                    {
+                        bestIndex = i;
+                        break;
+                    }
             }
 
             if (bestIndex == -1) break;
 
             long bestPrice = bestIndex + 90;
-            int headIdx = oppositeBook[bestIndex].Item1;
+            var headIdx = oppositeBook[bestIndex].Item1;
 
-            bool canMatch = incomingOrder.Side == OrderSide.Buy 
-                ? bestPrice <= scaledPrice 
+            var canMatch = incomingOrder.Side == OrderSide.Buy
+                ? bestPrice <= scaledPrice
                 : bestPrice >= scaledPrice;
 
             if (!canMatch) break;
@@ -60,13 +64,13 @@ public class OrderBook
             // Get first order in queue
             ref var makerOrder = ref _pool.Get(headIdx);
 
-            long tradeQuantity = Math.Min((long)incomingOrder.RemainingQuantity, makerOrder.Quantity);
+            var tradeQuantity = Math.Min((long)incomingOrder.RemainingQuantity, makerOrder.Quantity);
 
             var trade = new Trade(
-                price: (decimal)bestPrice,
-                quantity: (decimal)tradeQuantity,
-                makerId: makerOrder.Id,
-                takerId: incomingOrder.Id
+                bestPrice,
+                tradeQuantity,
+                makerOrder.Id,
+                incomingOrder.Id
             );
 
             onTrade(trade);
@@ -82,10 +86,7 @@ public class OrderBook
             }
         }
 
-        if (incomingOrder.RemainingQuantity > 0)
-        {
-            AddToBook(incomingOrder, priceIndex);
-        }
+        if (incomingOrder.RemainingQuantity > 0) AddToBook(incomingOrder, priceIndex);
     }
 
     private void AddToBook(Order order, int priceIndex)
@@ -93,7 +94,7 @@ public class OrderBook
         var book = order.Side == OrderSide.Buy ? _bids : _asks;
         ref var level = ref book[priceIndex];
 
-        int nodeIdx = _pool.Rent();
+        var nodeIdx = _pool.Rent();
         ref var node = ref _pool.Get(nodeIdx);
         node.Id = order.Id;
         node.Quantity = (long)order.RemainingQuantity;
@@ -103,7 +104,8 @@ public class OrderBook
         if (level.Item1 == -1)
         {
             level.Item1 = level.Item2 = nodeIdx;
-            if (book == _bids) _bidCount++; else _askCount++;
+            if (book == _bids) _bidCount++;
+            else _askCount++;
         }
         else
         {
@@ -117,43 +119,37 @@ public class OrderBook
     {
         ref var level = ref book[priceIndex];
         ref var node = ref _pool.Get(nodeIdx);
-        int prev = node.Prev;
-        int next = node.Next;
+        var prev = node.Prev;
+        var next = node.Next;
 
         if (prev != -1)
-        {
             _pool.Get(prev).Next = next;
-        }
         else
-        {
             // Was head
             level.Item1 = next;
-        }
 
         if (next != -1)
-        {
             _pool.Get(next).Prev = prev;
-        }
         else
-        {
             // Was tail
             level.Item2 = prev;
-        }
 
         if (level.Item1 == -1)
         {
-            if (book == _bids) _bidCount--; else _askCount--;
+            if (book == _bids) _bidCount--;
+            else _askCount--;
         }
     }
 
     public void Clear()
     {
         _pool.Reset();
-        for (int i = 0; i < 21; i++)
+        for (var i = 0; i < 21; i++)
         {
             _bids[i] = (-1, -1);
             _asks[i] = (-1, -1);
         }
+
         _bidCount = 0;
         _askCount = 0;
     }

@@ -1,6 +1,5 @@
-using Xunit;
-using MatchingEngine.Models;
 using MatchingEngine;
+using MatchingEngine.Models;
 
 public class OrderBookTests
 {
@@ -10,7 +9,7 @@ public class OrderBookTests
         // Arrange
         var book = new OrderBook();
         var trades = new List<Trade>();
-        
+
         // Seller: Sells 10 @ 100
         var sellOrder = new Order(1, OrderSide.Sell, 100, 10);
         book.ProcessOrder(sellOrder, t => trades.Add(t));
@@ -24,7 +23,7 @@ public class OrderBookTests
         Assert.Single(trades); // 1 გარიგება
         Assert.Equal(10, trades[0].Quantity);
         Assert.Equal(100, trades[0].Price);
-        
+
         var (bids, asks) = book.GetDepths();
         Assert.Equal(0, bids); // წიგნი ცარიელი უნდა იყოს
         Assert.Equal(0, asks);
@@ -36,7 +35,7 @@ public class OrderBookTests
         // Arrange
         var book = new OrderBook();
         var trades = new List<Trade>();
-        
+
         // Seller: Sells 10 @ 100
         book.ProcessOrder(new Order(1, OrderSide.Sell, 100, 10), t => trades.Add(t));
 
@@ -48,20 +47,20 @@ public class OrderBookTests
         // Assert
         Assert.Single(trades);
         Assert.Equal(10, trades[0].Quantity); // მხოლოდ 10 იყო გასაყიდი
-        
+
         var (bids, asks) = book.GetDepths();
         Assert.Equal(0, asks); // გამყიდველი გაქრა
         Assert.Equal(1, bids); // მყიდველი დარჩა
         // დარჩენილი მყიდველის რაოდენობა უნდა იყოს 5
     }
-    
+
     [Fact]
     public void PriceTimePriority_Should_MatchBestPriceFirst()
     {
         // Arrange
         var book = new OrderBook();
         var trades = new List<Trade>();
-        
+
         // Sellers: 
         // User A: Sells @ 100 (Best price)
         // User B: Sells @ 101 (Worse price)
