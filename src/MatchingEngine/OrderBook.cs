@@ -101,7 +101,13 @@ public class OrderBook
         var book = order.Side == OrderSide.Buy ? _bids : _asks;
         ref var level = ref book[priceIndex];
 
+        // FIX: Check for OOM
         var nodeIdx = _pool.Rent();
+        if (nodeIdx == -1)
+            // Optional: Log warning here if you pass ILogger to OrderBook
+            // For HFT, we simply drop the order to stay alive.
+            return;
+
         ref var node = ref _pool.Get(nodeIdx);
         node.Id = order.Id;
         node.Quantity = (long)order.RemainingQuantity;

@@ -20,6 +20,9 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
+
+    <!-- Kafka utilities -->
+    <PackageReference Include="Confluent.Kafka" Version="2.8.0" />
   </ItemGroup>
 
 </Project>

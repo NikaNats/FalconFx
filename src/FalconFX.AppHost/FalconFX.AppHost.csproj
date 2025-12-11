@@ -14,4 +14,8 @@
     <ProjectReference Include="..\MarketMaker\MarketMaker.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Kafka" Version="13.0.2" />
+  </ItemGroup>
+
 </Project>

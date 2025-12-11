@@ -49,9 +49,6 @@ public static class Extensions
 
             builder.Services.ConfigureHttpClientDefaults(http =>
             {
-                // ❌ COMMENTED OUT: This forces a 10-second timeout on ALL requests, which kills gRPC streams.
-                // http.AddStandardResilienceHandler();
-
                 // ✅ KEEP THIS LINE: This ensures "https://matching-engine" resolves to the correct IP/Port.
                 http.AddServiceDiscovery();
             });

@@ -1,4 +1,5 @@
-﻿using FalconFX.ServiceDefaults;
+﻿using Confluent.Kafka;
+using FalconFX.ServiceDefaults;
 using MatchingEngine;
 using MatchingEngine.Services;
 
@@ -9,12 +10,28 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. Add Aspire Defaults (Metrics, Tracing, HealthChecks)
 builder.AddServiceDefaults();
 
-// 2. Add gRPC Framework
+// 2. Configure Kafka Consumer
+builder.AddKafkaConsumer<string, byte[]>("kafka", settings =>
+{
+    settings.Config.GroupId = "matching-engine";
+    settings.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
+    settings.Config.EnableAutoCommit = false;
+    settings.Config.SocketTimeoutMs = 60000;
+    settings.Config.ApiVersionRequestTimeoutMs = 10000;
+    settings.Config.SessionTimeoutMs = 30000;
+    settings.Config.HeartbeatIntervalMs = 3000;
+    settings.Config.MaxPollIntervalMs = 300000;
+});
+
+// 3. Add gRPC Framework
 builder.Services.AddGrpc();
 
 // 3. Register our Singletons
 builder.Services.AddSingleton<EngineWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineWorker>());
+
+// Add Kafka Worker
+builder.Services.AddHostedService<KafkaWorker>();
 
 var app = builder.Build();
 

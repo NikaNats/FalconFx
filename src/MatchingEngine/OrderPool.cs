@@ -15,7 +15,8 @@ public class OrderPool
 
     public int Rent()
     {
-        if (_freeHead == -1) throw new Exception("OOM");
+        // FIX: Don't throw Exception, let the caller handle it.
+        if (_freeHead == -1) return -1; // Return invalid index to signal OOM
 
         var index = _freeHead;
         _freeHead = _memory[index].Next;

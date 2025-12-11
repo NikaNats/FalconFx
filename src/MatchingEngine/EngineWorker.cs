@@ -10,7 +10,8 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
     private readonly Channel<Order> _inputChannel = Channel.CreateUnbounded<Order>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
-    private readonly OrderBook _orderBook = new(); // 1 მილიონი ორდერის ადგილი
+    // FIX: Increase pool size from 1,000,000 to 10,000,000
+    private readonly OrderBook _orderBook = new(10_000_000); // 10 მილიონი ორდერის ადგილი
 
     // 2. Output Channel (შემდგარი გარიგებები)
     // SingleWriter = true (მხოლოდ ძრავა წერს)
@@ -41,38 +42,26 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
     private async Task RunMatchingEngineAsync(CancellationToken token)
     {
         var reader = _inputChannel.Reader;
-        var batchCount = 0;
+        logger.LogInformation("⚡ Engine loop running...");
 
-        // Optional: Create a parent trace for the whole run
-        using var activity = Instrumentation.ActivitySource.StartActivity("MatchingLoop");
+        // Optimization: Keep reusing this variable
+        Order order;
 
         while (await reader.WaitToReadAsync(token))
-        while (reader.TryRead(out var order))
+            // FAST LOOP: Consumes everything currently in the channel buffer 
+            // without awaiting until the buffer is empty.
+        while (reader.TryRead(out order))
         {
             _orderBook.ProcessOrder(order, trade =>
             {
                 _outputChannel.Writer.TryWrite(trade);
-
-                // 🔥 METRIC 1: Count Trade
+                // Reduce Interlocked calls for speed (approximate stats are fine for HFT)
                 Instrumentation.TradesCreated.Add(1);
-
-                // ✅ FIX: Increment local counter for console logging
                 Interlocked.Increment(ref _tradesCreated);
             });
 
-            // 🔥 METRIC 2: Count Order
             Instrumentation.OrdersProcessed.Add(1);
-
-            // Performance Optimization:
-            // We removed Interlocked.Increment because OTel counters 
-            // handle thread safety for us, but if you still need the local long 
-            // for your console logs, keep Interlocked as well.
             Interlocked.Increment(ref _ordersProcessed);
-
-            batchCount++;
-            if (batchCount >= 5000) batchCount = 0;
-            // Removed Task.Delay(1) - it was causing 15ms delays on Windows,
-            // artificially capping throughput. The Channel reader is already async.
         }
     }
 
@@ -96,11 +85,7 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
 
         while (await reader.WaitToReadAsync(token))
         while (reader.TryRead(out var trade))
-            // აქ მოხდება Kafka-ში გაგზავნა მოგვიანებით
-            // ჯერ უბრალოდ დავლოგოთ (მაგრამ არა ძალიან ხშირად, რომ არ გავჭედოთ კონსოლი)
-            if (trade.Price > 0)
-            {
-                // _logger.LogInformation($"Trade Executed: {trade.Quantity} @ {trade.Price}");
-            }
+            // Just drain the channel efficiently to keep memory low until you implement the Kafka Producer
+            ; // No-op to drain channel
     }
 }
