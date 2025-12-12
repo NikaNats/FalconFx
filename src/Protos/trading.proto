@@ -23,3 +23,13 @@ message SubmitOrderResponse {
   bool success = 1;
   string message = 2;
 }
+
+message TradeExecuted {
+  int64 id = 1;         // Unique ID (Snowflake or simple counter)
+  int64 maker_order_id = 2;
+  int64 taker_order_id = 3;
+  int64 price = 4;      // Scaled price
+  int64 quantity = 5;
+  int64 timestamp = 6;  // Ticks or Unix Epoch
+  string symbol = 7;    // e.g. "EURUSD"
+}

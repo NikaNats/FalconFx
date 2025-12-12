@@ -1,10 +1,15 @@
 using System.Threading.Channels;
+using Confluent.Kafka;
+using FalconFX.Protos;
+using Google.Protobuf;
 using MatchingEngine.Models;
 
 namespace MatchingEngine;
 
-public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
+public class EngineWorker(ILogger<EngineWorker> logger, IProducer<string, byte[]> producer) : BackgroundService
 {
+    private const string TradeTopic = "trades";
+
     // 1. Input Channel (შემომავალი ორდერები)
     // SingleReader = true (მხოლოდ ძრავა კითხულობს)
     private readonly Channel<Order> _inputChannel = Channel.CreateUnbounded<Order>(
@@ -69,6 +74,7 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
     private async Task ProcessTradesAsync(CancellationToken token)
     {
         var reader = _outputChannel.Reader;
+        var tradeMsg = new Message<string, byte[]> { Key = "EURUSD" }; // Reuse object
 
         // ყოველ 1 წამში ერთხელ დავბეჭდოთ სტატისტიკა
         var reportingTask = Task.Run(async () =>
@@ -85,7 +91,27 @@ public class EngineWorker(ILogger<EngineWorker> logger) : BackgroundService
 
         while (await reader.WaitToReadAsync(token))
         while (reader.TryRead(out var trade))
-            // Just drain the channel efficiently to keep memory low until you implement the Kafka Producer
-            ; // No-op to drain channel
+        {
+            // 1. Map Internal Struct -> Protobuf Class
+            // (Allocates memory, but unavoidable at the edge of the system for I/O)
+            var protoTrade = new TradeExecuted
+            {
+                Id = DateTime.UtcNow.Ticks, // Just a placeholder ID
+                MakerOrderId = trade.MakerOrderId,
+                TakerOrderId = trade.TakerOrderId,
+                Price = (long)trade.Price,
+                Quantity = (long)trade.Quantity,
+                Timestamp = trade.Timestamp,
+                Symbol = "EURUSD"
+            };
+
+            // 2. Serialize
+            tradeMsg.Value = protoTrade.ToByteArray();
+
+            // 3. Produce to Kafka (Non-blocking / Async)
+            producer.Produce(TradeTopic, tradeMsg);
+
+            // Optional: Handle error callback if needed, but keep it light
+        }
     }
 }

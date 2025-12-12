@@ -1,9 +1,7 @@
 using Confluent.Kafka;
-using Confluent.Kafka.Admin;
 using FalconFX.Protos;
 using FalconFX.ServiceDefaults;
 using Google.Protobuf;
-// Required for Topic Management
 
 namespace MarketMaker;
 
@@ -15,114 +13,79 @@ public class Worker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // 1. BLOCK HERE until port is open. No more "Broker down" logs.
+        logger.LogInformation("🚀 MarketMaker Worker starting...");
+
+        // 1. BLOCK HERE until port is open and Broker responds
         await KafkaUtils.WaitForBrokerReady(config, logger, stoppingToken);
 
-        // 2. Now safe to use Admin Client
-        await EnsureTopicExists(stoppingToken);
+        // 2. Ensure Topic Exists
+        await KafkaUtils.EnsureTopicExistsAsync(config, logger, TopicName);
 
-        // 3. Create producer AFTER Kafka is ready
+        // 🔥 CRITICAL: Wait for Leader Election for the new topic
+        // Without this, the first batch of messages hits "Unknown Topic or Partition"
+        logger.LogInformation("⏳ Waiting for Topic Leader Election...");
+        await Task.Delay(3000, stoppingToken);
+
+        // 3. Create producer
         var producerConfig = new ProducerConfig
         {
             BootstrapServers = config.GetConnectionString("kafka"),
-            // High throughput settings
-            LingerMs = 0, // Send immediately
-            BatchSize = 10 * 1024 * 1024, // 10MB batch
+            LingerMs = 5,
+            BatchSize = 1024 * 1024,
             CompressionType = CompressionType.Lz4,
-            Acks = Acks.None, // Fire and forget for max speed
-            MessageTimeoutMs = 30000,
-            SocketTimeoutMs = 60000,
-            ApiVersionRequestTimeoutMs = 10000
+
+            // 🔥 Use Leader Acks to ensure the broker actually accepted the order
+            Acks = Acks.Leader,
+
+            MessageTimeoutMs = 5000,
+            SocketTimeoutMs = 5000
         };
 
         using var producer = new ProducerBuilder<string, byte[]>(producerConfig).Build();
 
-        logger.LogInformation("🚀 Starting UNLEASHED Producer...");
+        logger.LogInformation("🚀 Starting Producer...");
 
-        // ... rest of your loop ...
         var orderId = 0L;
         var message = new Message<string, byte[]> { Key = "EURUSD" };
 
+        // Reuse Protobuf object to reduce GC pressure
+        var request = new SubmitOrderRequest();
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Batch of 10,000 orders before even checking the clock
-            for (var i = 0; i < 10000; i++)
+            // Batch of 100 orders
+            for (var i = 0; i < 100; i++)
             {
                 orderId++;
-                var request = new SubmitOrderRequest
-                {
-                    Id = orderId,
-                    Side = Random.Shared.Next(1, 3),
-                    // Old: 90 to 110 (Spread is too wide)
-                    // New: 98 to 102 (Tight spread = More matches = Smaller Book)
-                    Price = Random.Shared.Next(98, 102),
-                    Quantity = 10
-                };
+
+                request.Id = orderId;
+                request.Side = Random.Shared.Next(1, 3);
+                // Tight spread [99-101] to ensure matches happen frequently
+                request.Price = Random.Shared.Next(99, 102);
+                request.Quantity = 10;
 
                 message.Value = request.ToByteArray();
 
                 try
                 {
-                    // Fire and forget!
                     producer.Produce(TopicName, message);
                 }
                 catch (ProduceException<string, byte[]> e)
                 {
-                    if (e.Error.Code == ErrorCode.Local_QueueFull)
-                    {
-                        // Queue full? Poll to clear space, then retry immediately
-                        producer.Poll(TimeSpan.FromMilliseconds(5));
-                        i--; // Retry this index
-                    }
-                    else
-                    {
-                        await Task.Delay(100, stoppingToken);
-                    }
+                    // Log specifically to see if queue is full or broker is down
+                    logger.LogWarning($"Produce error: {e.Error.Reason}. Retrying...");
+                    await Task.Delay(500, stoppingToken);
                 }
             }
 
-            // Efficient Polling: 0 blocking time
             producer.Poll(TimeSpan.Zero);
 
-            if (orderId % 500_000 == 0)
+            // Log more frequently during debug (every 50k instead of 500k)
+            if (orderId % 50_000 == 0)
+            {
                 logger.LogInformation($"🔥 Sent {orderId:N0} orders");
-
-            // REMOVED: await Task.Delay(1); 
-            // We run as fast as the CPU allows.
-        }
-    }
-
-    private async Task EnsureTopicExists(CancellationToken token)
-    {
-        var configDict = new AdminClientConfig { BootstrapServers = config.GetConnectionString("kafka") };
-        using var adminClient = new AdminClientBuilder(configDict).Build();
-
-        // No while loop needed here anymore, usually one try is enough after WaitForBrokerReady
-        // But keeping a simple retry for safety is fine.
-        try
-        {
-            await adminClient.CreateTopicsAsync(new TopicSpecification[]
-            {
-                new() { Name = TopicName, NumPartitions = 1, ReplicationFactor = 1 }
-            });
-
-            logger.LogInformation($"✅ Topic '{TopicName}' created.");
-        }
-        catch (CreateTopicsException e)
-        {
-            if (e.Results[0].Error.Code == ErrorCode.TopicAlreadyExists)
-            {
-                logger.LogInformation($"✅ Topic '{TopicName}' exists.");
-                return;
+                await Task.Delay(10, stoppingToken); // Yield CPU
             }
-
-            logger.LogWarning($"Retrying topic creation: {e.Results[0].Error.Reason}");
-            await Task.Delay(1000, token);
-            // For simplicity, just retry once more
-            await adminClient.CreateTopicsAsync(new TopicSpecification[]
-            {
-                new() { Name = TopicName, NumPartitions = 1, ReplicationFactor = 1 }
-            });
         }
     }
 }

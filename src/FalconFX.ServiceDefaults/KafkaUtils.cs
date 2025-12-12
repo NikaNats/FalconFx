@@ -1,4 +1,5 @@
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -8,42 +9,89 @@ public static class KafkaUtils
 {
     public static async Task WaitForBrokerReady(IConfiguration config, ILogger logger, CancellationToken token)
     {
+        var connectionString = config.GetConnectionString("kafka");
+
+        // Configuration specifically for the Health Check
+        // Increased timeouts to 10s to handle slow container startup/network
         var configDict = new AdminClientConfig
         {
-            BootstrapServers = config.GetConnectionString("kafka"),
-            // Fail fast during the check so we can retry
-            SocketTimeoutMs = 2000,
-            ApiVersionRequestTimeoutMs = 2000
+            BootstrapServers = connectionString,
+            SocketTimeoutMs = 10000,
+            ApiVersionRequestTimeoutMs = 10000,
+            LogConnectionClose = false
         };
 
-        logger.LogInformation("⏳ waiting for Kafka Broker to be Metadata-Ready...");
+        logger.LogInformation($"⏳ Checking Kafka availability at {connectionString}...");
 
         while (!token.IsCancellationRequested)
         {
             try
             {
-                // Create a temporary AdminClient just to check health
-                using var adminClient = new AdminClientBuilder(configDict).Build();
+                using var adminClient = new AdminClientBuilder(configDict)
+                    // Enable error logging to debug connection issues
+                    .SetLogHandler((_, msg) =>
+                    {
+                        if (msg.Level < SyslogLevel.Info)
+                            logger.LogDebug($"[Kafka Admin] {msg.Message}");
+                    })
+                    .Build();
 
-                // Try to fetch metadata for the cluster. If this succeeds, Kafka is truly ready.
-                var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(2));
+                // Give it 5 seconds to respond
+                var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
 
                 if (metadata.Brokers.Count > 0)
                 {
-                    logger.LogInformation($"✅ Kafka Broker is Ready! (Detected {metadata.Brokers.Count} brokers)");
-                    return;
+                    logger.LogInformation($"✅ Kafka is READY. Found {metadata.Brokers.Count} brokers.");
+                    return; // Exit the loop and start the app
                 }
-            }
-            catch (KafkaException)
-            {
-                // Expected during startup
             }
             catch (Exception ex)
             {
+                // Log failure as warning so we know it's trying (and failing)
                 logger.LogWarning($"Waiting for Kafka... ({ex.Message})");
             }
 
             await Task.Delay(2000, token);
+        }
+    }
+
+    public static async Task EnsureTopicExistsAsync(
+        IConfiguration config,
+        ILogger logger,
+        string topicName,
+        int numPartitions = 1,
+        short replicationFactor = 1)
+    {
+        var adminConfig = new AdminClientConfig
+        {
+            BootstrapServers = config.GetConnectionString("kafka")
+        };
+
+        using var adminClient = new AdminClientBuilder(adminConfig).Build();
+
+        try
+        {
+            await adminClient.CreateTopicsAsync(new TopicSpecification[]
+            {
+                new()
+                {
+                    Name = topicName,
+                    NumPartitions = numPartitions,
+                    ReplicationFactor = replicationFactor
+                }
+            });
+            logger.LogInformation($"✅ Topic '{topicName}' created successfully.");
+        }
+        catch (CreateTopicsException e)
+        {
+            if (e.Results[0].Error.Code == ErrorCode.TopicAlreadyExists)
+                logger.LogInformation($"👌 Topic '{topicName}' already exists.");
+            else
+                logger.LogError($"❌ Failed to create topic '{topicName}': {e.Results[0].Error.Reason}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"❌ Error creating topic '{topicName}': {ex.Message}");
         }
     }
 }

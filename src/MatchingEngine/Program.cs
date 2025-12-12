@@ -23,6 +23,15 @@ builder.AddKafkaConsumer<string, byte[]>("kafka", settings =>
     settings.Config.MaxPollIntervalMs = 300000;
 });
 
+// 2.5. Configure Kafka Producer for Trades
+builder.AddKafkaProducer<string, byte[]>("kafka", settings =>
+{
+    // High throughput settings for trade reporting
+    settings.Config.LingerMs = 5;
+    settings.Config.BatchSize = 65536;
+    settings.Config.Acks = Acks.Leader;
+});
+
 // 3. Add gRPC Framework
 builder.Services.AddGrpc();
 

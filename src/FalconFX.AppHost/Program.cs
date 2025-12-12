@@ -1,20 +1,41 @@
+using Aspire.Hosting;
 using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// 1. Add Kafka with Data Volume (Persistence) and UI
+// 1. Kafka + UI
 var kafka = builder.AddKafka("kafka")
-    // .WithDataVolume(); // Comment out if you have permission errors on Windows/WSL
-    .WithKafkaUI(); // http://localhost:8080 - ვიზუალური ადმინ პანელი
+    .WithKafkaUI();
 
-// 2. Matching Engine (Consumer)
-var matchingEngine = builder.AddProject<MatchingEngine>("matching-engine")
+// 2. Postgres (Persistence)
+// Password will be auto-generated, viewable in the Dashboard
+var postgres = builder.AddPostgres("postgres")
+    .WithDataVolume()
+    .WithPgAdmin(); // http://localhost:5050 - SQL Admin Panel
+
+var tradeDb = postgres.AddDatabase("trade-db");
+
+// 3. Redis (Real-time Ticker / Snapshots)
+var redis = builder.AddRedis("redis")
+    .WithRedisCommander(); // http://localhost:8081 - Redis Admin
+
+// 4. Services
+var matchingEngine = builder.AddProject<Projects.MatchingEngine>("matching-engine")
     .WithReference(kafka)
-    .WaitFor(kafka); // <--- ADD THIS: Don't start until Kafka container is Up
+    // 🔥 This creates the dependency. Engine won't start until Kafka is "Healthy"
+    .WaitFor(kafka); // Engine is now a PRODUCER too
 
-// 3. Market Maker (Producer)
-var marketMaker = builder.AddProject<MarketMaker>("market-maker")
+var marketMaker = builder.AddProject<Projects.MarketMaker>("market-maker")
     .WithReference(kafka)
-    .WaitFor(kafka); // <--- ADD THIS
+    .WaitFor(kafka);
 
-await builder.Build().RunAsync();
+// 5. NEW: Trade Processor
+// We wait for Kafka and DB to be ready before starting this worker
+var tradeProcessor = builder.AddProject<Projects.TradeProcessor>("trade-processor")
+    .WithReference(kafka)
+    .WithReference(tradeDb)
+    .WithReference(redis)
+    .WaitFor(kafka)
+    .WaitFor(tradeDb);
+
+builder.Build().Run();

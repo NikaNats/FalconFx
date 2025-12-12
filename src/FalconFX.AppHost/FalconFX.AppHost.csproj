@@ -12,10 +12,13 @@
   <ItemGroup>
     <ProjectReference Include="..\MatchingEngine\MatchingEngine.csproj" />
     <ProjectReference Include="..\MarketMaker\MarketMaker.csproj" />
+    <ProjectReference Include="..\TradeProcessor\TradeProcessor.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.Kafka" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.0.2" />
   </ItemGroup>
 
 </Project>
