@@ -1,40 +1,38 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="coverlet.collector" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="FluentAssertions" />
-    <PackageReference Include="Aspire.Hosting.Testing" />
-    <PackageReference Include="StackExchange.Redis" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="coverlet.collector" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="NSubstitute" />
+		<PackageReference Include="xunit" />
+		<PackageReference Include="xunit.runner.visualstudio" />
+		<PackageReference Include="FluentAssertions" />
+		<PackageReference Include="Aspire.Hosting.Testing" />
+		<PackageReference Include="StackExchange.Redis" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Grpc.Net.Client" />
-    <PackageReference Include="Grpc.Net.ClientFactory" />
-    <PackageReference Include="Google.Protobuf" />
-    <PackageReference Include="Grpc.Tools" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Grpc.Net.Client" />
+		<PackageReference Include="Grpc.Net.ClientFactory" />
+		<PackageReference Include="Google.Protobuf" />
+		<PackageReference Include="Grpc.Tools" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <!-- Protobuf included via TradeProcessor reference -->
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\MatchingEngine\MatchingEngine.csproj" Aliases="MatchingEngineAlias" />
-    <ProjectReference Include="..\..\src\FalconFX.AppHost\FalconFX.AppHost.csproj" />
-    <ProjectReference Include="..\..\src\TradeProcessor\TradeProcessor.csproj" Aliases="TradeProcessorAlias" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\FalconFX.Gateway\FalconFX.Gateway.csproj" />
+		<ProjectReference Include="..\..\src\MatchingEngine\MatchingEngine.csproj" />
+		<ProjectReference Include="..\..\src\FalconFX.AppHost\FalconFX.AppHost.csproj" />
+		<ProjectReference Include="..\..\src\TradeProcessor\TradeProcessor.csproj" />
+	</ItemGroup>
 
 </Project>

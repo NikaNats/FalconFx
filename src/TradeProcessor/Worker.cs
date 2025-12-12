@@ -87,7 +87,7 @@ public class Worker(
                 // Payload: JSON or Simple String "Symbol:Price"
                 // We use simple string for max speed here.
                 await redisDb.PublishAsync(
-                    "market_updates",
+                    RedisChannel.Literal("market_updates"),
                     $"{trade.Symbol}:{trade.Price}",
                     CommandFlags.FireAndForget
                 );

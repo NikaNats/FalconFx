@@ -15,4 +15,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/FalconFX.Tests/FalconFX.Tests.csproj" />
   </Folder>
+  <Folder Name="/Protos/">
+    <Project Path="src/Protos/FalconFX.Protos.csproj" />
+  </Folder>
 </Solution>

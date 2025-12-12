@@ -10,15 +10,11 @@
   <ItemGroup>
     <PackageReference Include="Aspire.Confluent.Kafka" />
     <PackageReference Include="BenchmarkDotNet" />
-    <PackageReference Include="Grpc.AspNetCore" /> <!-- Update to 10.0 when available -->
+    <PackageReference Include="Grpc.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FalconFX.ServiceDefaults\FalconFX.ServiceDefaults.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Server mode generates the base class we need to implement -->
-    <Protobuf Include="..\Protos\trading.proto" GrpcServices="Server" />
+    <ProjectReference Include="..\Protos\FalconFX.Protos.csproj" />
   </ItemGroup>
 </Project>

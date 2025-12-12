@@ -1,6 +1,5 @@
-extern alias MatchingEngineAlias;
-using MatchingEngineAlias::MatchingEngine;
-using MatchingEngineAlias::MatchingEngine.Models;
+using MatchingEngine;
+using MatchingEngine.Models;
 using Xunit;
 
 namespace FalconFX.Tests;

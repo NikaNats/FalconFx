@@ -1,8 +1,8 @@
-extern alias TradeProcessorAlias;
+using FalconFX.Protos;
 using Microsoft.EntityFrameworkCore;
-using TradeProcessorAlias::FalconFX.Protos;
-using TradeProcessorAlias::TradeProcessor.Data;
 using Xunit;
+using TradeDbContext = TradeProcessor.Data.TradeDbContext;
+using TradeRecord = TradeProcessor.Data.TradeRecord;
 
 // Namespace for the processor logic
 namespace FalconFX.Tests;

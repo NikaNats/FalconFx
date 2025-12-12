@@ -15,11 +15,8 @@ public class RedisSubscriber(
         logger.LogInformation("🎧 Gateway listening to Redis channel 'market_updates'...");
 
         // Subscribe to the channel populated by TradeProcessor
-        await subscriber.SubscribeAsync("market_updates", async (channel, message) =>
-        {
-            // Offload to ThreadPool to not block the Redis listener thread
-            _ = ProcessMessage(message);
-        });
+        await subscriber.SubscribeAsync(RedisChannel.Literal("market_updates"),
+            async (channel, message) => { await ProcessMessage(message); });
 
         // Keep service alive
         await Task.Delay(Timeout.Infinite, stoppingToken);
