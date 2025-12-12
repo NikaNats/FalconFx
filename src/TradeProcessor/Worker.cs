@@ -3,6 +3,7 @@ using Confluent.Kafka;
 using FalconFX.Protos;
 using FalconFX.ServiceDefaults;
 using StackExchange.Redis;
+
 // Import Utils
 
 public class Worker(

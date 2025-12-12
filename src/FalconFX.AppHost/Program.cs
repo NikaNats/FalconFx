@@ -1,4 +1,3 @@
-using Aspire.Hosting;
 using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
@@ -20,18 +19,18 @@ var redis = builder.AddRedis("redis")
     .WithRedisCommander(); // http://localhost:8081 - Redis Admin
 
 // 4. Services
-var matchingEngine = builder.AddProject<Projects.MatchingEngine>("matching-engine")
+var matchingEngine = builder.AddProject<MatchingEngine>("matching-engine")
     .WithReference(kafka)
     // 🔥 This creates the dependency. Engine won't start until Kafka is "Healthy"
     .WaitFor(kafka); // Engine is now a PRODUCER too
 
-var marketMaker = builder.AddProject<Projects.MarketMaker>("market-maker")
+var marketMaker = builder.AddProject<MarketMaker>("market-maker")
     .WithReference(kafka)
     .WaitFor(kafka);
 
 // 5. NEW: Trade Processor
 // We wait for Kafka and DB to be ready before starting this worker
-var tradeProcessor = builder.AddProject<Projects.TradeProcessor>("trade-processor")
+var tradeProcessor = builder.AddProject<TradeProcessor>("trade-processor")
     .WithReference(kafka)
     .WithReference(tradeDb)
     .WithReference(redis)
