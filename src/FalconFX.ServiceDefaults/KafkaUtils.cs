@@ -86,7 +86,8 @@ public static class KafkaUtils
             if (e.Results[0].Error.Code == ErrorCode.TopicAlreadyExists)
                 logger.LogInformation("👌 Topic '{TopicName}' already exists.", topicName);
             else
-                logger.LogError("❌ Failed to create topic '{TopicName}': {ErrorReason}", topicName, e.Results[0].Error.Reason);
+                logger.LogError("❌ Failed to create topic '{TopicName}': {ErrorReason}", topicName,
+                    e.Results[0].Error.Reason);
         }
         catch (Exception ex)
         {

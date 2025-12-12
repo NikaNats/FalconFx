@@ -2,292 +2,122 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>FalconFX Pro Terminal</title>
-    <!-- იყენებს ლოკალურ ფაილს -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FalconFX | Institutional Trader</title>
+    <!-- We load the local script we downloaded earlier -->
     <script src="/lib/microsoft-signalr/signalr.min.js"></script>
     <style>
-        :root { 
-            --bg: #0d1117; 
-            --panel: #161b22; 
-            --border: #30363d;
-            --text-main: #e6edf3;
-            --text-dim: #8b949e;
-            --green: #2ea043; 
-            --red: #da3633; 
-            --accent: #58a6ff;
-        }
-        body { 
-            background-color: var(--bg); color: var(--text-main); 
-            font-family: 'Consolas', 'Monaco', monospace; 
-            margin: 0; padding: 20px; height: 95vh; display: flex; gap: 20px;
-            overflow: hidden;
-        }
+        :root { --bg: #0b0c10; --panel: #1f2833; --text: #c5c6c7; --green: #66fcf1; --red: #ff0033; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', monospace; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        
+        .terminal { background: var(--panel); width: 600px; padding: 40px; border-radius: 10px; box-shadow: 0 0 50px rgba(0,0,0,0.5); border: 1px solid #333; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
+        .status { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 2px; }
+        .live-indicator { display: inline-block; width: 10px; height: 10px; background-color: #333; border-radius: 50%; margin-right: 5px; }
+        .live-indicator.active { background-color: var(--green); box-shadow: 0 0 10px var(--green); }
 
-        /* LAYOUT */
-        .main-col { flex: 3; display: flex; flex-direction: column; gap: 20px; }
-        .side-col { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        .market-row { display: flex; justify-content: space-between; align-items: center; font-size: 4rem; font-weight: 900; }
+        .symbol { font-size: 2rem; color: #888; letter-spacing: -1px; }
+        
+        /* Flash Animations */
+        @keyframes flashGreen { 0% { color: #fff; text-shadow: 0 0 20px var(--green); } 100% { color: var(--green); } }
+        @keyframes flashRed { 0% { color: #fff; text-shadow: 0 0 20px var(--red); } 100% { color: var(--red); } }
+        
+        .up { color: var(--green); animation: flashGreen 0.2s ease-out; }
+        .down { color: var(--red); animation: flashRed 0.2s ease-out; }
 
-        .card { 
-            background: var(--panel); border: 1px solid var(--border); 
-            border-radius: 6px; padding: 15px; position: relative;
-        }
-
-        /* HEADER & PRICE */
-        .header { display: flex; justify-content: space-between; align-items: baseline; }
-        .symbol { font-size: 1.5rem; font-weight: bold; color: var(--accent); }
-        .price-box { font-size: 4rem; font-weight: 900; letter-spacing: -2px; transition: color 0.2s; }
-        .price-box.up { color: var(--green); }
-        .price-box.down { color: var(--red); }
-
-        /* STATS GRID */
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-top: 20px; }
-        .stat-item { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; }
-        .stat-label { font-size: 0.7rem; color: var(--text-dim); }
-        .stat-val { font-size: 1.1rem; font-weight: bold; }
-
-        /* CHART */
-        #chartContainer { flex-grow: 1; position: relative; background: #000; border: 1px solid var(--border); border-radius: 6px; }
-        canvas { display: block; width: 100%; height: 100%; }
-
-        /* TAPE (SCROLLING LOG) */
-        .tape-container { flex-grow: 1; overflow-y: hidden; position: relative; }
-        .tape-header { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
-        .trade-row { 
-            display: flex; justify-content: space-between; font-size: 0.85rem; 
-            padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); 
-            animation: slideIn 0.2s ease-out;
-        }
-        @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-        .status-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--panel); border-top: 1px solid var(--border); padding: 5px 20px; font-size: 0.75rem; color: var(--text-dim); display: flex; justify-content: space-between; }
-        .dot { width: 8px; height: 8px; background: #555; border-radius: 50%; display: inline-block; margin-right: 5px; }
-        .dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .meta { display: flex; justify-content: space-between; margin-top: 30px; font-size: 0.9rem; color: #555; }
     </style>
 </head>
 <body>
 
-<!-- MAIN COLUMN: PRICE & CHART -->
-<div class="main-col">
-    <div class="card">
-        <div class="header">
-            <div class="symbol">EUR / USD</div>
-            <div style="font-size: 0.8rem; color: #888">SPOT FX • INSTITUTIONAL FEED</div>
-        </div>
-        <div id="displayPrice" class="price-box">1.0000</div>
-
-        <div class="stats-grid">
-            <div class="stat-item">
-                <div class="stat-label">24H HIGH</div>
-                <div id="statHigh" class="stat-val">--.--</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">24H LOW</div>
-                <div id="statLow" class="stat-val">--.--</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">SPREAD</div>
-                <div class="stat-val">0.1</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">LATENCY</div>
-                <div id="statLatency" class="stat-val">0ms</div>
-            </div>
+<div class="terminal">
+    <div class="header">
+        <div>FALCON<span style="color:var(--green)">FX</span> L2 FEED</div>
+        <div class="status">
+            <span id="indicator" class="live-indicator"></span><span id="connectionStatus">Disconnected</span>
         </div>
     </div>
 
-    <div id="chartContainer">
-        <canvas id="marketChart"></canvas>
+    <div class="market-row">
+        <div class="symbol">EUR/USD</div>
+        <div id="priceDisplay">---.--</div>
     </div>
-</div>
 
-<!-- SIDE COLUMN: TRADE TAPE -->
-<div class="side-col">
-    <div class="card tape-container" id="tapeContainer">
-        <div class="tape-header">RECENT TRADES</div>
-        <div id="tradeList"></div>
+    <div class="meta">
+        <div>LATENCY: <span id="ping">0</span>ms</div>
+        <div>VOL: INST.</div>
     </div>
-</div>
-
-<div class="status-bar">
-    <div>
-        <span id="connDot" class="dot"></span> <span id="connStatus">Connecting...</span>
-    </div>
-    <div>FALCON<span style="color:var(--accent)">FX</span> ENGINE v1.0</div>
 </div>
 
 <script>
-        // --- CONFIG ---
-        // აქ ვაკეთებთ "ვიზუალურ მაგიას".
-        // ჩვენი ძრავა აგზავნის 99, 100, 101.
-        // ჩვენ ეს უნდა ვაქციოთ 1.0999, 1.1000, 1.1001-ად.
+        // 1. Config
+        // The backend sends 100, 101. We want 1.1000, 1.1001
         const BASE_PRICE = 1.1000;
-        const TICK_SIZE = 0.0001; 
-        const SCALING_FACTOR = 100; // რადგან 100 გვაქვს როგორც ბაზისური ცენტრი
+        const SCALING = 100; // raw price 100 = base price
 
-        // --- STATE ---
-        let history = []; // Chart data
-        const maxDataPoints = 200;
-        let high = 0;
-        let low = 999999;
-        let lastRawPrice = 0;
-        let lastTime = Date.now();
-
-        // --- SIGNALR SETUP ---
-        if (typeof signalR === 'undefined') {
-            alert("SignalR library not found! Check wwwroot/js folder.");
-        }
-
+        // 2. Connection
+        // 🔥 BEST PRACTICE: Relative URL. 
+        // This works because index.html is served BY the Gateway.
         const connection = new signalR.HubConnectionBuilder()
-            .withUrl("/markethub")
+            .withUrl("/markethub") 
             .withAutomaticReconnect()
             .build();
 
-        // --- DOM ELEMENTS ---
-        const elPrice = document.getElementById("displayPrice");
-        const elHigh = document.getElementById("statHigh");
-        const elLow = document.getElementById("statLow");
-        const elLatency = document.getElementById("statLatency");
-        const elList = document.getElementById("tradeList");
-        const elStatus = document.getElementById("connStatus");
-        const elDot = document.getElementById("connDot");
-
-        // --- CANVAS CHART SETUP ---
-        const canvas = document.getElementById("marketChart");
-        const ctx = canvas.getContext("2d");
+        // 3. UI Elements
+        const priceEl = document.getElementById("priceDisplay");
+        const statusEl = document.getElementById("connectionStatus");
+        const indicator = document.getElementById("indicator");
+        const pingEl = document.getElementById("ping");
         
-        function resizeChart() {
-            canvas.width = document.getElementById("chartContainer").clientWidth;
-            canvas.height = document.getElementById("chartContainer").clientHeight;
-        }
-        window.addEventListener('resize', resizeChart);
-        resizeChart();
+        let lastPrice = 0;
+        let lastTime = Date.now();
 
-        // --- LOGIC ---
         connection.on("ReceiveMarketUpdate", (symbol, rawPrice) => {
+            // Calculate Jitter
             const now = Date.now();
-            
-            // 1. Calculate Real Price (Visual Mockup)
-            // (rawPrice - 100) -> Deviation. 
-            // 100 -> 0 deviation -> 1.1000
-            // 101 -> +1 deviation -> 1.1001
-            const realPrice = BASE_PRICE + ((rawPrice - 100) * TICK_SIZE);
-            const formattedPrice = realPrice.toFixed(4);
-
-            // 2. Update Stats
-            if (realPrice > high) { high = realPrice; elHigh.innerText = high.toFixed(4); }
-            if (realPrice < low) { low = realPrice; elLow.innerText = low.toFixed(4); }
-            
-            // Latency (Jitter) calculation
-            elLatency.innerText = (now - lastTime) + "ms";
+            pingEl.innerText = now - lastTime;
             lastTime = now;
 
-            // 3. Update Big Price
-            if (rawPrice > lastRawPrice) {
-                elPrice.className = "price-box up";
-                elPrice.innerText = "▲ " + formattedPrice;
-            } else if (rawPrice < lastRawPrice) {
-                elPrice.className = "price-box down";
-                elPrice.innerText = "▼ " + formattedPrice;
+            // Visual Scaling Logic
+            // If rawPrice is 100, deviation is 0. If 101, deviation is 1.
+            // 1 pip = 0.0001
+            const deviation = rawPrice - SCALING; 
+            const realPrice = BASE_PRICE + (deviation * 0.0001);
+            
+            const formattedPrice = realPrice.toFixed(4); 
+
+            if (rawPrice > lastPrice) {
+                priceEl.className = "up";
+                priceEl.innerText = "▲ " + formattedPrice;
+            } else if (rawPrice < lastPrice) {
+                priceEl.className = "down";
+                priceEl.innerText = "▼ " + formattedPrice;
             } else {
-                elPrice.innerText = formattedPrice;
+                priceEl.innerText = formattedPrice;
             }
-            lastRawPrice = rawPrice;
+            
+            lastPrice = rawPrice;
+        });
 
-            // 4. Update Chart Data
-            history.push(realPrice);
-            if (history.length > maxDataPoints) history.shift();
-            drawChart();
-
-            // 5. Update Trade Tape
-            addTradeToTape(formattedPrice, rawPrice > lastRawPrice ? 'buy' : 'sell');
+        connection.onreconnecting(() => {
+            statusEl.innerText = "Reconnecting...";
+            indicator.className = "live-indicator";
+            priceEl.style.color = "#333";
         });
 
         connection.onreconnected(() => {
-            elStatus.innerText = "CONNECTED (HFT STREAM)";
-            elDot.className = "dot active";
+            statusEl.innerText = "LIVE STREAM";
+            indicator.className = "live-indicator active";
         });
 
-        connection.onclose(() => {
-            elStatus.innerText = "DISCONNECTED";
-            elDot.className = "dot";
-        });
-
-        // --- CHART DRAWING (HIGH PERFORMANCE) ---
-        function drawChart() {
-            const w = canvas.width;
-            const h = canvas.height;
-            ctx.clearRect(0, 0, w, h);
-
-            if (history.length < 2) return;
-
-            // Find scale
-            let min = Math.min(...history);
-            let max = Math.max(...history);
-            let range = max - min;
-            if (range === 0) range = 0.0001;
-            
-            // Padding
-            min -= range * 0.1;
-            max += range * 0.1;
-            range = max - min;
-
-            ctx.beginPath();
-            ctx.strokeStyle = "#58a6ff";
-            ctx.lineWidth = 2;
-            ctx.lineJoin = "round";
-
-            const stepX = w / (maxDataPoints - 1);
-
-            history.forEach((price, i) => {
-                const x = i * stepX;
-                // Invert Y because canvas 0 is top
-                const y = h - ((price - min) / range * h);
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-
-            ctx.stroke();
-
-            // Draw Area Gradient
-            const gradient = ctx.createLinearGradient(0, 0, 0, h);
-            gradient.addColorStop(0, "rgba(88, 166, 255, 0.2)");
-            gradient.addColorStop(1, "rgba(88, 166, 255, 0)");
-
-            ctx.lineTo(history.length * stepX, h);
-            ctx.lineTo(0, h);
-            ctx.closePath();
-            ctx.fillStyle = gradient;
-            ctx.fill();
-        }
-
-        // --- TAPE LOGIC ---
-        function addTradeToTape(price, side) {
-            const div = document.createElement("div");
-            div.className = "trade-row";
-            const time = new Date().toLocaleTimeString().split(' ')[0];
-            const size = Math.floor(Math.random() * 100) + 1; // Fake size for visual
-            const color = side === 'buy' ? 'var(--green)' : 'var(--red)';
-            
-            div.innerHTML = `
-                <span style="color:#555">${time}</span>
-                <span style="color:${color}">${price}</span>
-                <span>${size}M</span>
-            `;
-            
-            elList.prepend(div);
-            if (elList.children.length > 20) {
-                elList.removeChild(elList.lastChild);
-            }
-        }
-
-        // --- START ---
         async function start() {
             try {
                 await connection.start();
-                elStatus.innerText = "CONNECTED (HFT STREAM)";
-                elDot.className = "dot active";
+                statusEl.innerText = "LIVE STREAM";
+                indicator.className = "live-indicator active";
             } catch (err) {
-                elStatus.innerText = "RETRYING...";
+                console.error(err);
                 setTimeout(start, 5000);
             }
         }
