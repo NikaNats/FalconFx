@@ -49,13 +49,10 @@ public class EngineWorker(ILogger<EngineWorker> logger, IProducer<string, byte[]
         var reader = _inputChannel.Reader;
         logger.LogInformation("⚡ Engine loop running...");
 
-        // Optimization: Keep reusing this variable
-        Order order;
-
         while (await reader.WaitToReadAsync(token))
             // FAST LOOP: Consumes everything currently in the channel buffer 
             // without awaiting until the buffer is empty.
-        while (reader.TryRead(out order))
+        while (reader.TryRead(out var order))
         {
             _orderBook.ProcessOrder(order, trade =>
             {

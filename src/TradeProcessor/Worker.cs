@@ -7,6 +7,8 @@ using TradeProcessor.Data;
 
 // Import Utils
 
+namespace TradeProcessor;
+
 public class Worker(
     ILogger<Worker> logger,
     IServiceProvider serviceProvider,
@@ -44,7 +46,7 @@ public class Worker(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                ConsumeResult<string, byte[]> result = null;
+                ConsumeResult<string, byte[]> result;
 
                 try
                 {
@@ -80,7 +82,7 @@ public class Worker(
                 // Update Real-time Ticker in Redis (Fire & Forget)
                 // Key: "ticker:EURUSD", Value: LastPrice
                 // Flags: FireAndForget speeds up the loop as we don't wait for Redis response
-                redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget);
+                await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget);
 
                 // 2. 🔥 Publish Event (Real-Time Stream) - Volatile
                 // Channel: "market_updates"

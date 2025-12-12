@@ -32,10 +32,10 @@ public class EngineWorkerTests
         worker.EnqueueOrder(new Order(2, OrderSide.Buy, 100, 10));
 
         // Allow the async loop to process (HFT is fast, 200ms is plenty)
-        await Task.Delay(200);
+        await Task.Delay(200, cts.Token);
 
         // Stop the worker gracefully
-        cts.Cancel();
+        await cts.CancelAsync();
         try
         {
             await workerTask;

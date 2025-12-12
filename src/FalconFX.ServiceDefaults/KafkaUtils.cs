@@ -21,7 +21,7 @@ public static class KafkaUtils
             LogConnectionClose = false
         };
 
-        logger.LogInformation($"⏳ Checking Kafka availability at {connectionString}...");
+        logger.LogInformation("⏳ Checking Kafka availability at {ConnectionString}...", connectionString);
 
         while (!token.IsCancellationRequested)
         {
@@ -71,27 +71,26 @@ public static class KafkaUtils
 
         try
         {
-            await adminClient.CreateTopicsAsync(new TopicSpecification[]
-            {
-                new()
+            await adminClient.CreateTopicsAsync([
+                new TopicSpecification
                 {
                     Name = topicName,
                     NumPartitions = numPartitions,
                     ReplicationFactor = replicationFactor
                 }
-            });
-            logger.LogInformation($"✅ Topic '{topicName}' created successfully.");
+            ]);
+            logger.LogInformation("✅ Topic '{TopicName}' created successfully.", topicName);
         }
         catch (CreateTopicsException e)
         {
             if (e.Results[0].Error.Code == ErrorCode.TopicAlreadyExists)
-                logger.LogInformation($"👌 Topic '{topicName}' already exists.");
+                logger.LogInformation("👌 Topic '{TopicName}' already exists.", topicName);
             else
-                logger.LogError($"❌ Failed to create topic '{topicName}': {e.Results[0].Error.Reason}");
+                logger.LogError("❌ Failed to create topic '{TopicName}': {ErrorReason}", topicName, e.Results[0].Error.Reason);
         }
         catch (Exception ex)
         {
-            logger.LogError($"❌ Error creating topic '{topicName}': {ex.Message}");
+            logger.LogError("❌ Error creating topic '{TopicName}': {ExMessage}", topicName, ex.Message);
         }
     }
 }

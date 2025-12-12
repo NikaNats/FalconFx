@@ -49,7 +49,7 @@ public class GatewayWorkerTests
         var workerTask = worker.StartAsync(cts.Token);
 
         // Wait for subscription to be set up
-        await Task.Delay(100);
+        await Task.Delay(100, cts.Token);
 
         Assert.NotNull(capturedHandler); // Ensure subscription happened
 
@@ -57,10 +57,10 @@ public class GatewayWorkerTests
         capturedHandler(RedisChannel.Literal("market_updates"), "EURUSD:10550");
 
         // Give the Fire-and-Forget thread a moment to execute
-        await Task.Delay(50);
+        await Task.Delay(50, cts.Token);
 
         // Stop the worker
-        cts.Cancel();
+        await cts.CancelAsync();
         try
         {
             await workerTask;
@@ -102,17 +102,17 @@ public class GatewayWorkerTests
         var workerTask = worker.StartAsync(cts.Token);
 
         // Wait for subscription
-        await Task.Delay(100);
+        await Task.Delay(100, cts.Token);
 
         Assert.NotNull(capturedHandler);
 
         // Send garbage data
         capturedHandler(RedisChannel.Literal("market_updates"), "GARBAGE_DATA_NO_COLON");
 
-        await Task.Delay(50);
+        await Task.Delay(50, cts.Token);
 
         // Stop the worker
-        cts.Cancel();
+        await cts.CancelAsync();
         try
         {
             await workerTask;

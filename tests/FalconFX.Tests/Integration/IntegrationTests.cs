@@ -1,12 +1,13 @@
 using System.Net;
 using Aspire.Hosting.Testing;
+using FalconFX.AppHost;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 // Requires Aspire.Hosting.Testing package
 // Auto-generated namespace from AppHost reference
 
-namespace FalconFX.Tests;
+namespace FalconFX.Tests.Integration;
 
 public class IntegrationTests
 {
@@ -19,7 +20,7 @@ public class IntegrationTests
             .CreateAsync<AppHostProgram>();
 
         // Optional: Override configuration for tests (e.g. smaller buffers)
-        appHost.Services.ConfigureHttpClientDefaults(client =>
+        appHost.Services.ConfigureHttpClientDefaults(_ =>
         {
             // Allow self-signed certs for testing if needed
         });
@@ -44,7 +45,7 @@ public class IntegrationTests
             catch (HttpRequestException)
             {
                 // Service might not be listening yet
-                await Task.Delay(1000);
+                await Task.Delay(1000, cts.Token);
             }
 
         // 3. Assert

@@ -17,7 +17,7 @@ public class TradeMappingTests
             .UseInMemoryDatabase("TradesDb_" + Guid.NewGuid())
             .Options;
 
-        using var db = new TradeDbContext(options);
+        await using var db = new TradeDbContext(options);
 
         var tradeProto = new TradeExecuted
         {

@@ -16,7 +16,7 @@ public class RedisSubscriber(
 
         // Subscribe to the channel populated by TradeProcessor
         await subscriber.SubscribeAsync(RedisChannel.Literal("market_updates"),
-            async (channel, message) => { await ProcessMessage(message); });
+            async (_, message) => { await ProcessMessage(message); });
 
         // Keep service alive
         await Task.Delay(Timeout.Infinite, stoppingToken);
@@ -45,7 +45,7 @@ public class RedisSubscriber(
         catch (Exception ex)
         {
             // Don't crash the loop
-            logger.LogWarning($"Bad message format: {ex.Message}");
+            logger.LogWarning("Bad message format: {ExMessage}", ex.Message);
         }
     }
 }

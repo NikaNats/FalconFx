@@ -104,7 +104,7 @@ public class OrderBookTests
         Assert.Equal(101, trades[0].MakerOrderId); // MUST be User A, not User B
 
         // Verify User B is still in the book
-        var (bids, asks) = book.GetDepths();
+        var (_, asks) = book.GetDepths();
         Assert.Equal(1, asks); // 1 order remaining on ask side
     }
 
@@ -121,18 +121,18 @@ public class OrderBookTests
         for (var i = 0; i < 20; i++) book.ProcessOrder(new Order(i, OrderSide.Buy, 90 + i, 1), _ => { });
 
         // Verify counts
-        var (bids, asks) = book.GetDepths();
+        var (bids, _) = book.GetDepths();
         Assert.Equal(20, bids); // 20 different price levels
 
         // Act: Clear the book (reset pointers)
         book.Clear();
-        (bids, asks) = book.GetDepths();
+        (bids, _) = book.GetDepths();
         Assert.Equal(0, bids);
 
         // Act: Fill again. If pointers were broken, this would throw IndexOutOfRange or corrupt data
         for (var i = 0; i < 20; i++) book.ProcessOrder(new Order(i + 100, OrderSide.Buy, 90 + i, 1), _ => { });
 
-        (bids, asks) = book.GetDepths();
+        (bids, _) = book.GetDepths();
         Assert.Equal(20, bids);
     }
 
@@ -169,7 +169,7 @@ public class OrderBookTests
         Assert.Equal(5, trades[2].Quantity);
 
         // Check remaining depth
-        var (bids, asks) = book.GetDepths();
+        var (_, asks) = book.GetDepths();
         Assert.Equal(1, asks); // Only part of the order at 102 remains (5 units)
     }
 }

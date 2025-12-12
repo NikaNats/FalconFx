@@ -1,5 +1,7 @@
 using Projects;
 
+namespace FalconFX.AppHost;
+
 public class AppHostProgram
 {
     public static void Main(string[] args)

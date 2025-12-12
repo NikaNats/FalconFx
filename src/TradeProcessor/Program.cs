@@ -1,5 +1,6 @@
 using Confluent.Kafka;
 using FalconFX.ServiceDefaults;
+using TradeProcessor;
 using TradeProcessor.Data;
 
 var builder = Host.CreateApplicationBuilder(args);
