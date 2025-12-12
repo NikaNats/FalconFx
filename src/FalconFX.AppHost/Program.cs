@@ -37,4 +37,10 @@ var tradeProcessor = builder.AddProject<TradeProcessor>("trade-processor")
     .WaitFor(kafka)
     .WaitFor(tradeDb);
 
+// 6. Gateway
+var gateway = builder.AddProject<FalconFX_Gateway>("gateway")
+    .WithReference(redis) // Needs connection to Redis
+    .WaitFor(redis)
+    .WithExternalHttpEndpoints(); // Allow browser access
+
 builder.Build().Run();

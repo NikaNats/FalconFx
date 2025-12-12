@@ -13,6 +13,7 @@
     <ProjectReference Include="..\MatchingEngine\MatchingEngine.csproj" />
     <ProjectReference Include="..\MarketMaker\MarketMaker.csproj" />
     <ProjectReference Include="..\TradeProcessor\TradeProcessor.csproj" />
+    <ProjectReference Include="..\FalconFX.Gateway\FalconFX.Gateway.csproj" />
   </ItemGroup>
 
   <ItemGroup>

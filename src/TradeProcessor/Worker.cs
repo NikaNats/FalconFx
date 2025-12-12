@@ -81,6 +81,16 @@ public class Worker(
                 // Flags: FireAndForget speeds up the loop as we don't wait for Redis response
                 redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget);
 
+                // 2. 🔥 Publish Event (Real-Time Stream) - Volatile
+                // Channel: "market_updates"
+                // Payload: JSON or Simple String "Symbol:Price"
+                // We use simple string for max speed here.
+                await redisDb.PublishAsync(
+                    "market_updates",
+                    $"{trade.Symbol}:{trade.Price}",
+                    CommandFlags.FireAndForget
+                );
+
                 // If Batch Full -> Flush to Postgres
                 if (dbBatch.Count >= BatchSize) await FlushBatchAsync(dbBatch, stoppingToken);
             }
