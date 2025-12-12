@@ -1,6 +1,8 @@
 using FalconFX.Protos;
 using Microsoft.EntityFrameworkCore;
 
+namespace TradeProcessor.Data;
+
 public class TradeDbContext(DbContextOptions<TradeDbContext> options) : DbContext(options)
 {
     public DbSet<TradeRecord> Trades => Set<TradeRecord>();

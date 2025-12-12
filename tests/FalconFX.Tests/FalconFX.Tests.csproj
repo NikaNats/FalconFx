@@ -34,7 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MatchingEngine\MatchingEngine.csproj" Aliases="MatchingEngineAlias" />
     <ProjectReference Include="..\..\src\FalconFX.AppHost\FalconFX.AppHost.csproj" />
-    <ProjectReference Include="..\..\src\TradeProcessor\TradeProcessor.csproj" />
+    <ProjectReference Include="..\..\src\TradeProcessor\TradeProcessor.csproj" Aliases="TradeProcessorAlias" />
   </ItemGroup>
 
 </Project>

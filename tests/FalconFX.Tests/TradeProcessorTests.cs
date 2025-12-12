@@ -1,5 +1,7 @@
-using FalconFX.Protos;
+extern alias TradeProcessorAlias;
 using Microsoft.EntityFrameworkCore;
+using TradeProcessorAlias::FalconFX.Protos;
+using TradeProcessorAlias::TradeProcessor.Data;
 using Xunit;
 
 // Namespace for the processor logic

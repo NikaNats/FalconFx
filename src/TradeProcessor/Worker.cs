@@ -3,6 +3,7 @@ using Confluent.Kafka;
 using FalconFX.Protos;
 using FalconFX.ServiceDefaults;
 using StackExchange.Redis;
+using TradeProcessor.Data;
 
 // Import Utils
 
