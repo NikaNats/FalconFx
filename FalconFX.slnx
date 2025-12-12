@@ -1,0 +1,18 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/FalconFX.AppHost/FalconFX.AppHost.csproj" />
+    <Project Path="src/FalconFX.Gateway/FalconFX.Gateway.csproj" />
+    <Project Path="src/FalconFX.ServiceDefaults/FalconFX.ServiceDefaults.csproj" />
+    <Project Path="src/MarketMaker/MarketMaker.csproj" />
+    <Project Path="src/MatchingEngine/MatchingEngine.csproj" />
+    <Project Path="src/TradeProcessor/TradeProcessor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MatchingEngine.Tests/MatchingEngine.Tests.csproj" />
+  </Folder>
+</Solution>

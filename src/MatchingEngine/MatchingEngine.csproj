@@ -8,9 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Confluent.Kafka" Version="13.0.2" />
-    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" /> <!-- Update to 10.0 when available -->
+    <PackageReference Include="Aspire.Confluent.Kafka" />
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Grpc.AspNetCore" /> <!-- Update to 10.0 when available -->
   </ItemGroup>
 
   <ItemGroup>
