@@ -44,3 +44,8 @@ var gateway = builder.AddProject<FalconFX_Gateway>("gateway")
     .WithExternalHttpEndpoints(); // Allow browser access
 
 builder.Build().Run();
+
+// This makes the internal Program class visible to the Test Project
+public class AppHostProgram
+{
+}

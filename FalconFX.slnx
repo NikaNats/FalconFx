@@ -13,6 +13,6 @@
     <Project Path="src/TradeProcessor/TradeProcessor.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/MatchingEngine.Tests/MatchingEngine.Tests.csproj" />
+    <Project Path="tests/FalconFX.Tests/FalconFX.Tests.csproj" />
   </Folder>
 </Solution>

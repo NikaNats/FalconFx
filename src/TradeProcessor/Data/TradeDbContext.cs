@@ -1,3 +1,4 @@
+using FalconFX.Protos;
 using Microsoft.EntityFrameworkCore;
 
 public class TradeDbContext(DbContextOptions<TradeDbContext> options) : DbContext(options)
@@ -25,4 +26,18 @@ public class TradeRecord
     public long Timestamp { get; set; }
     public string Symbol { get; set; } = "";
     public DateTime InsertedAt { get; set; } = DateTime.UtcNow;
+
+    // Static factory method for mapping from protobuf
+    public static TradeRecord FromProto(TradeExecuted proto)
+    {
+        return new TradeRecord
+        {
+            MakerOrderId = proto.MakerOrderId,
+            TakerOrderId = proto.TakerOrderId,
+            Price = proto.Price,
+            Quantity = proto.Quantity,
+            Symbol = proto.Symbol,
+            Timestamp = proto.Timestamp
+        };
+    }
 }
