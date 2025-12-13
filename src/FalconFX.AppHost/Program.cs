@@ -25,18 +25,18 @@ public class AppHostProgram
             .WithRedisCommander(); // http://localhost:8081 - Redis Admin
 
 // 4. Services
-        var matchingEngine = builder.AddProject<MatchingEngine>("matching-engine")
+        var matchingEngine = builder.AddProject<FalconFX_MatchingEngine>("matching-engine")
             .WithReference(kafka)
             // 🔥 This creates the dependency. Engine won't start until Kafka is "Healthy"
             .WaitFor(kafka); // Engine is now a PRODUCER too
 
-        var marketMaker = builder.AddProject<MarketMaker>("market-maker")
+        var marketMaker = builder.AddProject<FalconFX_MarketMaker>("market-maker")
             .WithReference(kafka)
             .WaitFor(kafka);
 
 // 5. NEW: Trade Processor
 // We wait for Kafka and DB to be ready before starting this worker
-        var tradeProcessor = builder.AddProject<TradeProcessor>("trade-processor")
+        var tradeProcessor = builder.AddProject<FalconFX_TradeProcessor>("trade-processor")
             .WithReference(kafka)
             .WithReference(tradeDb)
             .WithReference(redis)

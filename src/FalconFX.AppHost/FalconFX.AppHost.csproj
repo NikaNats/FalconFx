@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.0.2">
+﻿<Project Sdk="Aspire.AppHost.Sdk/13.0.2">
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
@@ -9,9 +9,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\MatchingEngine\MatchingEngine.csproj" />
-		<ProjectReference Include="..\MarketMaker\MarketMaker.csproj" />
-		<ProjectReference Include="..\TradeProcessor\TradeProcessor.csproj" />
+		<ProjectReference Include="..\FalconFX.MatchingEngine\FalconFX.MatchingEngine.csproj" />
+		<ProjectReference Include="..\FalconFX.MarketMaker\FalconFX.MarketMaker.csproj" />
+		<ProjectReference Include="..\FalconFX.TradeProcessor\FalconFX.TradeProcessor.csproj" />
 		<ProjectReference Include="..\FalconFX.Gateway\FalconFX.Gateway.csproj" />
 	</ItemGroup>
 

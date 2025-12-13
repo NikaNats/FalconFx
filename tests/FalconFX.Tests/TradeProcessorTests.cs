@@ -1,8 +1,8 @@
 using FalconFX.Protos;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
-using TradeDbContext = TradeProcessor.Data.TradeDbContext;
-using TradeRecord = TradeProcessor.Data.TradeRecord;
+using TradeDbContext = FalconFX.TradeProcessor.Data.TradeDbContext;
+using TradeRecord = FalconFX.TradeProcessor.Data.TradeRecord;
 
 // Namespace for the processor logic
 namespace FalconFX.Tests;

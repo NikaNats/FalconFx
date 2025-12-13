@@ -7,33 +7,123 @@
     <!-- We load the local script we downloaded earlier -->
     <script src="/lib/microsoft-signalr/signalr.min.js"></script>
     <style>
-        :root { --bg: #0b0c10; --panel: #1f2833; --text: #c5c6c7; --green: #66fcf1; --red: #ff0033; }
-        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', monospace; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-        
-        .terminal { background: var(--panel); width: 600px; padding: 40px; border-radius: 10px; box-shadow: 0 0 50px rgba(0,0,0,0.5); border: 1px solid #333; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
-        .status { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 2px; }
-        .live-indicator { display: inline-block; width: 10px; height: 10px; background-color: #333; border-radius: 50%; margin-right: 5px; }
-        .live-indicator.active { background-color: var(--green); box-shadow: 0 0 10px var(--green); }
+        :root {
+            --bg: #0b0c10;
+            --panel: #1f2833;
+            --text: #c5c6c7;
+            --green: #66fcf1;
+            --red: #ff0033;
+        }
 
-        .market-row { display: flex; justify-content: space-between; align-items: center; font-size: 4rem; font-weight: 900; }
-        .symbol { font-size: 2rem; color: #888; letter-spacing: -1px; }
-        
+        body {
+            align-items: center;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            font-family: 'Segoe UI', monospace;
+            height: 100vh;
+            justify-content: center;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .terminal {
+            background: var(--panel);
+            border: 1px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            padding: 40px;
+            width: 600px;
+        }
+
+        .header {
+            align-items: center;
+            border-bottom: 2px solid #333;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+        }
+
+        .status {
+            color: #666;
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .live-indicator {
+            background-color: #333;
+            border-radius: 50%;
+            display: inline-block;
+            height: 10px;
+            margin-right: 5px;
+            width: 10px;
+        }
+
+        .live-indicator.active {
+            background-color: var(--green);
+            box-shadow: 0 0 10px var(--green);
+        }
+
+        .market-row {
+            align-items: center;
+            display: flex;
+            font-size: 4rem;
+            font-weight: 900;
+            justify-content: space-between;
+        }
+
+        .symbol {
+            color: #888;
+            font-size: 2rem;
+            letter-spacing: -1px;
+        }
+
         /* Flash Animations */
-        @keyframes flashGreen { 0% { color: #fff; text-shadow: 0 0 20px var(--green); } 100% { color: var(--green); } }
-        @keyframes flashRed { 0% { color: #fff; text-shadow: 0 0 20px var(--red); } 100% { color: var(--red); } }
-        
-        .up { color: var(--green); animation: flashGreen 0.2s ease-out; }
-        .down { color: var(--red); animation: flashRed 0.2s ease-out; }
 
-        .meta { display: flex; justify-content: space-between; margin-top: 30px; font-size: 0.9rem; color: #555; }
+        @keyframes flashGreen {
+            0% {
+                color: #fff;
+                text-shadow: 0 0 20px var(--green);
+            }
+
+            100% { color: var(--green); }
+        }
+
+        @keyframes flashRed {
+            0% {
+                color: #fff;
+                text-shadow: 0 0 20px var(--red);
+            }
+
+            100% { color: var(--red); }
+        }
+
+        .up {
+            animation: flashGreen 0.2s ease-out;
+            color: var(--green);
+        }
+
+        .down {
+            animation: flashRed 0.2s ease-out;
+            color: var(--red);
+        }
+
+        .meta {
+            color: #555;
+            display: flex;
+            font-size: 0.9rem;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
     </style>
 </head>
 <body>
 
 <div class="terminal">
     <div class="header">
-        <div>FALCON<span style="color:var(--green)">FX</span> L2 FEED</div>
+        <div>FALCON<span style="color: var(--green)">FX</span> L2 FEED</div>
         <div class="status">
             <span id="indicator" class="live-indicator"></span><span id="connectionStatus">Disconnected</span>
         </div>
@@ -51,29 +141,30 @@
 </div>
 
 <script>
-        // 1. Config
-        // The backend sends 100, 101. We want 1.1000, 1.1001
-        const BASE_PRICE = 1.1000;
-        const SCALING = 100; // raw price 100 = base price
+    // 1. Config
+// The backend sends 100, 101. We want 1.1000, 1.1001
+    const BASE_PRICE = 1.1000;
+    const SCALING = 100; // raw price 100 = base price
 
-        // 2. Connection
-        // 🔥 BEST PRACTICE: Relative URL. 
-        // This works because index.html is served BY the Gateway.
-        const connection = new signalR.HubConnectionBuilder()
-            .withUrl("/markethub") 
-            .withAutomaticReconnect()
-            .build();
+// 2. Connection
+// 🔥 BEST PRACTICE: Relative URL. 
+// This works because index.html is served BY the Gateway.
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/markethub")
+        .withAutomaticReconnect()
+        .build();
 
-        // 3. UI Elements
-        const priceEl = document.getElementById("priceDisplay");
-        const statusEl = document.getElementById("connectionStatus");
-        const indicator = document.getElementById("indicator");
-        const pingEl = document.getElementById("ping");
-        
-        let lastPrice = 0;
-        let lastTime = Date.now();
+// 3. UI Elements
+    const priceEl = document.getElementById("priceDisplay");
+    const statusEl = document.getElementById("connectionStatus");
+    const indicator = document.getElementById("indicator");
+    const pingEl = document.getElementById("ping");
 
-        connection.on("ReceiveMarketUpdate", (symbol, rawPrice) => {
+    let lastPrice = 0;
+    let lastTime = Date.now();
+
+    connection.on("ReceiveMarketUpdate",
+        (symbol, rawPrice) => {
             // Calculate Jitter
             const now = Date.now();
             pingEl.innerText = now - lastTime;
@@ -82,47 +173,47 @@
             // Visual Scaling Logic
             // If rawPrice is 100, deviation is 0. If 101, deviation is 1.
             // 1 pip = 0.0001
-            const deviation = rawPrice - SCALING; 
+            const deviation = rawPrice - SCALING;
             const realPrice = BASE_PRICE + (deviation * 0.0001);
-            
-            const formattedPrice = realPrice.toFixed(4); 
+
+            const formattedPrice = realPrice.toFixed(4);
 
             if (rawPrice > lastPrice) {
                 priceEl.className = "up";
-                priceEl.innerText = "▲ " + formattedPrice;
+                priceEl.innerText = `▲ ${formattedPrice}`;
             } else if (rawPrice < lastPrice) {
                 priceEl.className = "down";
-                priceEl.innerText = "▼ " + formattedPrice;
+                priceEl.innerText = `▼ ${formattedPrice}`;
             } else {
                 priceEl.innerText = formattedPrice;
             }
-            
+
             lastPrice = rawPrice;
         });
 
-        connection.onreconnecting(() => {
-            statusEl.innerText = "Reconnecting...";
-            indicator.className = "live-indicator";
-            priceEl.style.color = "#333";
-        });
+    connection.onreconnecting(() => {
+        statusEl.innerText = "Reconnecting...";
+        indicator.className = "live-indicator";
+        priceEl.style.color = "#333";
+    });
 
-        connection.onreconnected(() => {
+    connection.onreconnected(() => {
+        statusEl.innerText = "LIVE STREAM";
+        indicator.className = "live-indicator active";
+    });
+
+    async function start() {
+        try {
+            await connection.start();
             statusEl.innerText = "LIVE STREAM";
             indicator.className = "live-indicator active";
-        });
-
-        async function start() {
-            try {
-                await connection.start();
-                statusEl.innerText = "LIVE STREAM";
-                indicator.className = "live-indicator active";
-            } catch (err) {
-                console.error(err);
-                setTimeout(start, 5000);
-            }
+        } catch (err) {
+            console.error(err);
+            setTimeout(start, 5000);
         }
+    }
 
-        start();
-    </script>
+    start();
+</script>
 </body>
 </html>

@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>dotnet-MatchingEngine-uuid</UserSecretsId>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Aspire.Confluent.Kafka" />
+		<PackageReference Include="BenchmarkDotNet" />
+		<PackageReference Include="Grpc.AspNetCore" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FalconFX.ServiceDefaults\FalconFX.ServiceDefaults.csproj" />
+		<ProjectReference Include="..\FalconFX.Protos\FalconFX.Protos.csproj" />
+	</ItemGroup>
+</Project>

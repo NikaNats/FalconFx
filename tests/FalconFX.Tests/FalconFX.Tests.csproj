@@ -30,9 +30,11 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\src\FalconFX.Gateway\FalconFX.Gateway.csproj" />
-		<ProjectReference Include="..\..\src\MatchingEngine\MatchingEngine.csproj" />
+		<ProjectReference Include="..\..\src\FalconFX.MatchingEngine\FalconFX.MatchingEngine.csproj" />
 		<ProjectReference Include="..\..\src\FalconFX.AppHost\FalconFX.AppHost.csproj" />
-		<ProjectReference Include="..\..\src\TradeProcessor\TradeProcessor.csproj" />
+		<ProjectReference Include="..\..\src\FalconFX.TradeProcessor\FalconFX.TradeProcessor.csproj" />
+		<ProjectReference Include="..\..\src\FalconFX.MarketMaker\FalconFX.MarketMaker.csproj" />
+		<ProjectReference Include="..\..\src\FalconFX.Protos\FalconFX.Protos.csproj" />
 	</ItemGroup>
 
 </Project>
