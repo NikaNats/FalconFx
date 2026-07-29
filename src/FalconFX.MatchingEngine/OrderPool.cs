@@ -1,64 +1,64 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using FalconFX.MatchingEngine.Models;
 
 namespace FalconFX.MatchingEngine;
 
-public class OrderPool
+public sealed class OrderPool
 {
     private int _freeHead;
-    private OrderNode[] _memory;
+    private readonly OrderNode[] _memory;
 
     public OrderPool(int size)
     {
         _memory = new OrderNode[size];
-        Reset(); // ინიციალიზაცია
+        Reset();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int Rent()
     {
-        // FIX: Don't throw Exception, let the caller handle it.
-        if (_freeHead == -1) return -1; // Return invalid index to signal OOM
+        if (_freeHead == -1) return -1; // Out of Memory, OrderBook-მა უნდა დაამუშაოს
 
         var index = _freeHead;
-        _freeHead = _memory[index].Next;
 
-        // გასუფთავება (Next/Prev კავშირების გაწყვეტა)
-        _memory[index].Next = -1;
-        _memory[index].Prev = -1;
+        // Zero-cost bounds check bypass using MemoryMarshal
+        ref var node = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), index);
+        _freeHead = node.Next;
+
+        node.Next = -1;
+        node.Prev = -1;
 
         return index;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Return(int index)
     {
-        _memory[index].Next = _freeHead;
+        ref var node = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), index);
+        node.Next = _freeHead;
         _freeHead = index;
     }
 
-    // ოპტიმიზებული Reset!
     public void Reset()
     {
-        // 1. უბრალოდ ვანულებთ Free Pointer-ს საწყისზე
         _freeHead = 0;
+        var span = _memory.AsSpan(); // Span-ის გამოყენება სწრაფი ინიციალიზაციისთვის
 
-        // 2. აღვადგენთ ჯაჭვს (O(N) - მაგრამ ეს არის Unsafe Memory Access-ის გარეშე ყველაზე საიმედო)
-        // სისწრაფისთვის ვიყენებთ Span-ს, რომ არ შევამოწმოთ Bounds Check ყოველ ჯერზე
-        // (თუმცა უბრალო for ციკლიც Ok არის)
-
-        for (var i = 0; i < _memory.Length - 1; i++)
+        for (var i = 0; i < span.Length - 1; i++)
         {
-            _memory[i].Next = i + 1;
-            _memory[i].Prev = -1; // Optional
+            span[i].Next = i + 1;
+            span[i].Prev = -1;
         }
 
-        // ბოლო ელემენტი
-        _memory[^1].Next = -1;
-        _memory[^1].Prev = -1;
-
-        // _maxUsedIndex-ს ვივიწყებთ დროებით, რადგან ის იყო ბაგის სავარაუდო წყარო
+        span[^1].Next = -1;
+        span[^1].Prev = -1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref OrderNode Get(int index)
     {
-        return ref _memory[index];
+        // ბევრად უფრო სწრაფი ვიდრე _memory[index], რადგან არ ამოწმებს საზღვრებს ყოველ ჯერზე
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), index);
     }
 }
