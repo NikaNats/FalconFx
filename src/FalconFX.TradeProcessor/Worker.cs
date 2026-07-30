@@ -4,6 +4,7 @@ using Confluent.Kafka;
 using FalconFX.Protos;
 using FalconFX.ServiceDefaults;
 using FalconFX.TradeProcessor.Data;
+using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 
 namespace FalconFX.TradeProcessor;
@@ -14,7 +15,7 @@ public sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly IServiceProvider _serviceProvider;
-    private readonly IConsumer<string, byte[]> _consumer;
+    private readonly IConsumer<Null, byte[]> _consumer;
     private readonly IConnectionMultiplexer _redis;
     private readonly IConfiguration _config;
 
@@ -26,7 +27,7 @@ public sealed class Worker : BackgroundService
     public Worker(
         ILogger<Worker> logger,
         IServiceProvider serviceProvider,
-        IConsumer<string, byte[]> consumer,
+        IConsumer<Null, byte[]> consumer,
         IConnectionMultiplexer redis,
         IConfiguration config)
     {
@@ -38,28 +39,41 @@ public sealed class Worker : BackgroundService
 
         _tradeChannel = Channel.CreateBounded<TradeWorkItem>(new BoundedChannelOptions(10_000)
         {
-            FullMode = BoundedChannelFullMode.Wait
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = true
         });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await KafkaUtils.WaitForBrokerReady(_config, _logger, stoppingToken);
-        await KafkaUtils.EnsureTopicExistsAsync(_config, _logger, Topic);
+        _logger.LogTradeProcessorStarting();
+
+        await KafkaUtils.WaitForBrokerReady(_config, _logger, stoppingToken).ConfigureAwait(false);
+        await KafkaUtils.EnsureTopicExistsAsync(_config, _logger, Topic).ConfigureAwait(false);
 
         using (var scope = _serviceProvider.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TradeDbContext>();
-            await db.Database.EnsureCreatedAsync(stoppingToken);
+            await db.Database.EnsureCreatedAsync(stoppingToken).ConfigureAwait(false);
         }
 
         _consumer.Subscribe(Topic);
-        _logger.LogInformation("Trade Processor Started. Listening...");
+        _logger.LogKafkaConsumerSubscribed(Topic);
 
-        var consumeTask = Task.Run(() => ConsumeKafkaLoopAsync(stoppingToken), stoppingToken);
-        var dbTask = Task.Run(() => DbBatchWriterLoopAsync(stoppingToken), stoppingToken);
+        var consumeTask = Task.Factory.StartNew(
+            () => ConsumeKafkaLoopAsync(stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
 
-        await Task.WhenAll(consumeTask, dbTask);
+        var dbTask = Task.Factory.StartNew(
+            () => DbBatchWriterLoopAsync(stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
+
+        await Task.WhenAll(consumeTask, dbTask).ConfigureAwait(false);
     }
 
     private async Task ConsumeKafkaLoopAsync(CancellationToken token)
@@ -73,38 +87,23 @@ public sealed class Worker : BackgroundService
                 try
                 {
                     var result = _consumer.Consume(token);
-                    if (result?.Message == null) continue;
+                    if (result?.Message?.Value == null) continue;
 
+                    // Protobuf Deserialization
                     var trade = TradeExecuted.Parser.ParseFrom(result.Message.Value);
 
-                    var record = new TradeRecord
-                    {
-                        MakerOrderId = trade.MakerOrderId,
-                        TakerOrderId = trade.TakerOrderId,
-                        Price = trade.Price,
-                        Quantity = trade.Quantity,
-                        Symbol = trade.Symbol,
-                        Timestamp = trade.Timestamp
-                    };
+                    var record = TradeRecord.FromProto(trade);
 
-                    await _tradeChannel.Writer.WriteAsync(new TradeWorkItem(record, result.TopicPartitionOffset), token);
+                    // Write to In-Memory Channel for DB Batching
+                    await _tradeChannel.Writer.WriteAsync(new TradeWorkItem(record, result.TopicPartitionOffset), token).ConfigureAwait(false);
 
-                    int priceDigits = GetFormattedLength(trade.Price);
-                    string redisPayload = string.Create(trade.Symbol.Length + 1 + priceDigits, (trade.Symbol, trade.Price),
-                        (span, state) =>
-                        {
-                            state.Symbol.AsSpan().CopyTo(span);
-                            span[state.Symbol.Length] = ':';
-                            state.Price.TryFormat(span[(state.Symbol.Length + 1)..], out _);
-                        });
-
-                    await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget);
-                    await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget);
+                    // Redis Market Update (FireAndForget - Non Blocking)
+                    _ = UpdateRedisMarketDataAsync(redisDb, trade);
                 }
                 catch (ConsumeException ex)
                 {
-                    _logger.LogWarning("Kafka Consume Warning: {Reason}. Retrying...", ex.Error.Reason);
-                    await Task.Delay(500, token);
+                    _logger.LogKafkaConsumeWarning(ex.Error.Reason);
+                    await Task.Delay(500, token).ConfigureAwait(false);
                 }
             }
         }
@@ -114,6 +113,20 @@ public sealed class Worker : BackgroundService
             _tradeChannel.Writer.Complete();
             _consumer.Close();
         }
+    }
+
+    private static async Task UpdateRedisMarketDataAsync(IDatabase redisDb, TradeExecuted trade)
+    {
+        // Zero-Alloc String Formatting via Span
+        Span<char> span = stackalloc char[trade.Symbol.Length + 1 + 20];
+        trade.Symbol.AsSpan().CopyTo(span);
+        span[trade.Symbol.Length] = ':';
+
+        trade.Price.TryFormat(span[(trade.Symbol.Length + 1)..], out int charsWritten);
+        var redisPayload = span[..(trade.Symbol.Length + 1 + charsWritten)].ToString();
+
+        await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget).ConfigureAwait(false);
+        await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget).ConfigureAwait(false);
     }
 
     private async Task DbBatchWriterLoopAsync(CancellationToken token)
@@ -128,22 +141,22 @@ public sealed class Worker : BackgroundService
                 var readTask = _tradeChannel.Reader.WaitToReadAsync(token).AsTask();
                 var timerTask = flushTimer.WaitForNextTickAsync(token).AsTask();
 
-                var completedTask = await Task.WhenAny(readTask, timerTask);
+                var completedTask = await Task.WhenAny(readTask, timerTask).ConfigureAwait(false);
 
-                if (completedTask == readTask && await readTask)
+                if (completedTask == readTask && await readTask.ConfigureAwait(false))
                 {
                     while (_tradeChannel.Reader.TryRead(out var item))
                     {
                         batch.Add(item);
                         if (batch.Count >= BatchSize)
                         {
-                            await FlushBatchAsync(batch, token);
+                            await FlushBatchAsync(batch, token).ConfigureAwait(false);
                         }
                     }
                 }
                 else if (completedTask == timerTask && batch.Count > 0)
                 {
-                    await FlushBatchAsync(batch, token);
+                    await FlushBatchAsync(batch, token).ConfigureAwait(false);
                 }
             }
         }
@@ -156,7 +169,7 @@ public sealed class Worker : BackgroundService
             }
             if (batch.Count > 0)
             {
-                await FlushBatchAsync(batch, CancellationToken.None);
+                await FlushBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
             }
         }
     }
@@ -166,12 +179,16 @@ public sealed class Worker : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradeDbContext>();
 
+        // 🚀 EF Core Optimization: Disable Change Tracking for Bulk Add
+        db.ChangeTracker.AutoDetectChangesEnabled = false;
+
         db.Trades.AddRange(batch.Select(x => x.Record));
 
         var sw = Stopwatch.StartNew();
-        await db.SaveChangesAsync(token);
+        await db.SaveChangesAsync(token).ConfigureAwait(false);
         sw.Stop();
 
+        // Kafka Offset Commit
         var offsetsToCommit = batch
             .GroupBy(x => x.Offset.TopicPartition)
             .Select(g => new TopicPartitionOffset(g.Key, g.Max(x => x.Offset.Offset) + 1));
@@ -182,23 +199,31 @@ public sealed class Worker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Failed to commit Kafka offsets: {Message}", ex.Message);
+            _logger.LogKafkaCommitError(ex.Message);
         }
 
-        _logger.LogInformation("Saved {Count} trades in {Time}ms", batch.Count, sw.ElapsedMilliseconds);
+        _logger.LogBatchSaved(batch.Count, sw.ElapsedMilliseconds);
         batch.Clear();
     }
+}
 
-    private static int GetFormattedLength(long value)
-    {
-        if (value == 0) return 1;
-        int count = value < 0 ? 1 : 0;
-        long v = Math.Abs(value);
-        while (v > 0)
-        {
-            count++;
-            v /= 10;
-        }
-        return count;
-    }
+// ═══════════════════════════════════════════
+//  ZERO-ALLOCATION LOGGING EXTENSIONS
+// ═══════════════════════════════════════════
+internal static partial class TradeProcessorLogExtensions
+{
+    [LoggerMessage(EventId = 301, Level = LogLevel.Information, Message = "🚀 TradeProcessor Worker starting...")]
+    public static partial void LogTradeProcessorStarting(this ILogger logger);
+
+    [LoggerMessage(EventId = 302, Level = LogLevel.Information, Message = "Trade Processor Started. Listening to topic '{Topic}'...")]
+    public static partial void LogKafkaConsumerSubscribed(this ILogger logger, string topic);
+
+    [LoggerMessage(EventId = 303, Level = LogLevel.Warning, Message = "Kafka Consume Warning: {Reason}. Retrying...")]
+    public static partial void LogKafkaConsumeWarning(this ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 304, Level = LogLevel.Warning, Message = "Failed to commit Kafka offsets: {Message}")]
+    public static partial void LogKafkaCommitError(this ILogger logger, string message);
+
+    [LoggerMessage(EventId = 305, Level = LogLevel.Information, Message = "💾 Saved {Count:N0} trades to DB in {Time}ms")]
+    public static partial void LogBatchSaved(this ILogger logger, int count, long time);
 }

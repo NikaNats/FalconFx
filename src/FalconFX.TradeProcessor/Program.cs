@@ -8,16 +8,17 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
 // Kafka Consumer
-builder.AddKafkaConsumer<string, byte[]>("kafka", settings =>
+builder.AddKafkaConsumer<Null, byte[]>("kafka", settings =>
 {
     settings.Config.GroupId = "trade-processor-group";
     settings.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
+    settings.Config.EnableAutoCommit = false;
 });
 
-// Postgres
+// Postgres Context
 builder.AddNpgsqlDbContext<TradeDbContext>("trade-db");
 
-// Redis
+// Redis Client
 builder.AddRedisClient("redis");
 
 builder.Services.AddHostedService<Worker>();

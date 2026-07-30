@@ -9,18 +9,17 @@ public class TradeDbContext(DbContextOptions<TradeDbContext> options) : DbContex
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Optimize for Time-Series queries
         modelBuilder.Entity<TradeRecord>()
-            .HasIndex(t => t.Timestamp);
+            .HasIndex(t => new { t.Symbol, t.Timestamp });
 
         modelBuilder.Entity<TradeRecord>()
-            .HasIndex(t => t.Symbol);
+            .HasIndex(t => t.Timestamp);
     }
 }
 
 public class TradeRecord
 {
-    public long Id { get; set; } // Primary Key
+    public long Id { get; set; }
     public long MakerOrderId { get; set; }
     public long TakerOrderId { get; set; }
     public long Price { get; set; }
@@ -29,7 +28,6 @@ public class TradeRecord
     public string Symbol { get; set; } = "";
     public DateTime InsertedAt { get; set; } = DateTime.UtcNow;
 
-    // Static factory method for mapping from protobuf
     public static TradeRecord FromProto(TradeExecuted proto)
     {
         return new TradeRecord
