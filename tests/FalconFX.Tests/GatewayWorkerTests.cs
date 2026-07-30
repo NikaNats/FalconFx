@@ -1,6 +1,7 @@
 using FalconFX.Gateway.Hubs;
 using FalconFX.Gateway.Workers;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using StackExchange.Redis;
@@ -19,6 +20,7 @@ public class GatewayWorkerTests
         var hubContext = Substitute.For<IHubContext<MarketHub, IMarketClient>>();
         var clients = Substitute.For<IHubClients<IMarketClient>>();
         var clientProxy = Substitute.For<IMarketClient>();
+        var config = Substitute.For<IConfiguration>(); // 🛠️ IConfiguration Mock
 
         // Wire up the chain: Redis -> Subscriber
         redis.GetSubscriber().Returns(subscriber);
@@ -37,14 +39,15 @@ public class GatewayWorkerTests
             Arg.Any<CommandFlags>()
         ).Returns(Task.CompletedTask);
 
+        // 🛠️ გადაეცა 4-ვე პარამეტრი
         var worker = new RedisSubscriber(
             NullLogger<RedisSubscriber>.Instance,
             redis,
-            hubContext
+            hubContext,
+            config
         );
 
         // 2. Act
-        // Start the worker (this triggers the SubscribeAsync call we mocked above)
         var cts = new CancellationTokenSource();
         var workerTask = worker.StartAsync(cts.Token);
 
@@ -70,7 +73,6 @@ public class GatewayWorkerTests
         }
 
         // 3. Assert
-        // Verify the parsed data was sent to the interface
         await clientProxy.Received(1).ReceiveMarketUpdate("EURUSD", 10550);
     }
 
@@ -83,9 +85,9 @@ public class GatewayWorkerTests
         var hubContext = Substitute.For<IHubContext<MarketHub, IMarketClient>>();
         var clients = Substitute.For<IHubClients<IMarketClient>>();
         var clientProxy = Substitute.For<IMarketClient>();
+        var config = Substitute.For<IConfiguration>(); // 🛠️ IConfiguration Mock
 
         redis.GetSubscriber().Returns(subscriber);
-        // Wire up the chain even though we expect no call
         hubContext.Clients.Returns(clients);
         clients.All.Returns(clientProxy);
 
@@ -95,13 +97,18 @@ public class GatewayWorkerTests
             Arg.Do<Action<RedisChannel, RedisValue>>(h => capturedHandler = h),
             Arg.Any<CommandFlags>()).Returns(Task.CompletedTask);
 
-        var worker = new RedisSubscriber(NullLogger<RedisSubscriber>.Instance, redis, hubContext);
+        // 🛠️ გადაეცა 4-ვე პარამეტრი
+        var worker = new RedisSubscriber(
+            NullLogger<RedisSubscriber>.Instance,
+            redis,
+            hubContext,
+            config
+        );
 
         // 2. Act
         var cts = new CancellationTokenSource();
         var workerTask = worker.StartAsync(cts.Token);
 
-        // Wait for subscription
         await Task.Delay(100, cts.Token);
 
         Assert.NotNull(capturedHandler);
@@ -111,7 +118,6 @@ public class GatewayWorkerTests
 
         await Task.Delay(50, cts.Token);
 
-        // Stop the worker
         await cts.CancelAsync();
         try
         {
@@ -122,7 +128,6 @@ public class GatewayWorkerTests
         }
 
         // 3. Assert
-        // Verify we did NOT send anything (and implicitly, that we didn't crash)
         await clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());
     }
 }
