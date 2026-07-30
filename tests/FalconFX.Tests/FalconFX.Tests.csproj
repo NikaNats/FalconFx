@@ -15,6 +15,7 @@
 		</PackageReference>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="NSubstitute" />
+		<PackageReference Include="Testcontainers.Kafka" />
 		<PackageReference Include="xunit.runner.visualstudio" />
 		<PackageReference Include="FluentAssertions" />
 		<PackageReference Include="Aspire.Hosting.Testing" />
