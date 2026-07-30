@@ -18,5 +18,6 @@
     <Project Path="tests/FalconFX.MatchingEngine.Tests/FalconFX.MatchingEngine.Tests.csproj" />
     <Project Path="tests/FalconFX.TradeProcessor.Tests/FalconFX.TradeProcessor.Tests.csproj" />
     <Project Path="tests/FalconFX.IntegrationTests/FalconFX.IntegrationTests.csproj" />
+    <Project Path="tests/FalconFX.Benchmarks/FalconFX.Benchmarks.csproj" />
   </Folder>
 </Solution>
