@@ -7,10 +7,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.Kafka;
 using Xunit;
 
-namespace FalconFX.Tests.Integration;
+namespace FalconFX.IntegrationTests.Infrastructure;
 
-public class WorkerIntegrationTests : IAsyncLifetime
+public class KafkaIntegrationTests : IAsyncLifetime
 {
+    // Testcontainers-ის მიერ რეალური Kafka Docker კონტეინერის გაშვება
     private readonly KafkaContainer _kafkaContainer = new KafkaBuilder("confluentinc/cp-kafka:7.6.0")
         .Build();
 
@@ -25,8 +26,9 @@ public class WorkerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Worker_ShouldProduceValidProtobufOrdersToKafka()
+    public async Task MarketMakerWorker_ShouldProduceValidProtobufOrders_ToKafkaTopic()
     {
+        // Arrange
         var bootstrapServers = _kafkaContainer.GetBootstrapAddress();
 
         var config = new ConfigurationBuilder()
@@ -41,17 +43,18 @@ public class WorkerIntegrationTests : IAsyncLifetime
 
         using var cts = new CancellationTokenSource();
 
+        // Act 1: ამუშავდეს MarketMaker Worker 5 წამით
         var workerTask = worker.StartAsync(cts.Token);
-
-        await Task.Delay(7000);
-
+        await Task.Delay(5000);
         await cts.CancelAsync();
-        await workerTask;
 
+        try { await workerTask; } catch (OperationCanceledException) { }
+
+        // Act 2: წავიკითხოთ შეტყობინებები Kafka-დან
         var consumerConfig = new ConsumerConfig
         {
             BootstrapServers = bootstrapServers,
-            GroupId = "test-verifier-group",
+            GroupId = "test-verification-group",
             AutoOffsetReset = AutoOffsetReset.Earliest
         };
 
@@ -60,14 +63,15 @@ public class WorkerIntegrationTests : IAsyncLifetime
 
         var consumeResult = consumer.Consume(TimeSpan.FromSeconds(10));
 
-        consumeResult.Should().NotBeNull("Worker-ს უნდა გაეგზავნა შეტყობინებები Kafka-ში");
+        // Assert: Kafka-ში უნდა იყოს ჩაწერილი ვალიდური Protobuf SubmitOrderRequest
+        consumeResult.Should().NotBeNull("MarketMaker-ს უნდა გაეგზავნა შეტყობინებები Kafka-ში");
         consumeResult.Message.Value.Should().NotBeNull();
 
         var orderRequest = SubmitOrderRequest.Parser.ParseFrom(consumeResult.Message.Value);
 
         orderRequest.Id.Should().BeGreaterThan(0);
         orderRequest.Price.Should().BeInRange(99, 101);
-        orderRequest.Side.Should().BeOneOf(1, 2);
+        orderRequest.Side.Should().BeOneOf(1, 2); // 1 = Buy, 2 = Sell
         orderRequest.Quantity.Should().Be(10);
     }
 }

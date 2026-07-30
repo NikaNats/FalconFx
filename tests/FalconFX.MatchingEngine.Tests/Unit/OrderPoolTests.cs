@@ -1,7 +1,6 @@
 ﻿using FluentAssertions;
-using Xunit;
 
-namespace FalconFX.MatchingEngine.Tests;
+namespace FalconFX.MatchingEngine.Tests.Unit;
 
 public class OrderPoolTests
 {

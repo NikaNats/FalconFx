@@ -1,8 +1,6 @@
-using FalconFX.MatchingEngine;
-using FalconFX.MatchingEngine.Models;
-using Xunit;
+﻿using FalconFX.MatchingEngine.Models;
 
-namespace FalconFX.Tests;
+namespace FalconFX.MatchingEngine.Tests.Unit;
 
 public class OrderBookTests
 {
@@ -69,7 +67,7 @@ public class OrderBookTests
 
         // Act
         var buyOrder = new Order(3, OrderSide.Buy, 102, 5);
-        book.ProcessOrder(buyOrder, t => trades.Add(t));
+        book.ProcessOrder(buyOrder, trades.Add);
 
         // Assert
         Assert.Single(trades);
@@ -155,7 +153,7 @@ public class OrderBookTests
     [Fact]
     public void Order_OutsidePriceBounds_Should_ReturnRejectedStatus()
     {
-        var book = new OrderBook(90, 110);
+        var book = new OrderBook();
 
         var invalidLowOrder = new Order(1, OrderSide.Buy, 85, 10);
         var invalidHighOrder = new Order(2, OrderSide.Buy, 115, 10);

@@ -7,14 +7,16 @@
   <Folder Name="/src/">
     <Project Path="src/FalconFX.AppHost/FalconFX.AppHost.csproj" />
     <Project Path="src/FalconFX.Gateway/FalconFX.Gateway.csproj" />
-    <Project Path="src/FalconFX.Protos/FalconFX.Protos.csproj" />
-    <Project Path="src/FalconFX.ServiceDefaults/FalconFX.ServiceDefaults.csproj" />
     <Project Path="src/FalconFX.MarketMaker/FalconFX.MarketMaker.csproj" />
     <Project Path="src/FalconFX.MatchingEngine/FalconFX.MatchingEngine.csproj" />
+    <Project Path="src/FalconFX.Protos/FalconFX.Protos.csproj" />
+    <Project Path="src/FalconFX.ServiceDefaults/FalconFX.ServiceDefaults.csproj" />
     <Project Path="src/FalconFX.TradeProcessor/FalconFX.TradeProcessor.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/FalconFX.Tests/FalconFX.Tests.csproj" />
+    <Project Path="tests/FalconFX.Gateway.Tests/FalconFX.Gateway.Tests.csproj" />
+    <Project Path="tests/FalconFX.MatchingEngine.Tests/FalconFX.MatchingEngine.Tests.csproj" />
+    <Project Path="tests/FalconFX.TradeProcessor.Tests/FalconFX.TradeProcessor.Tests.csproj" />
+    <Project Path="tests/FalconFX.IntegrationTests/FalconFX.IntegrationTests.csproj" />
   </Folder>
 </Solution>
-

@@ -3,12 +3,12 @@ using FalconFX.TradeProcessor.Data;
 using FluentAssertions;
 using Xunit;
 
-namespace FalconFX.TradeProcessor.Tests;
+namespace FalconFX.TradeProcessor.Tests.Data;
 
 public class TradeRecordMappingTests
 {
     [Fact]
-    public void FromProto_ShouldMapAllFieldsCorrectly()
+    public void FromProto_ShouldMapAllFieldsCorrectly_WithoutDataLoss()
     {
         // Arrange
         var protoTrade = new TradeExecuted
