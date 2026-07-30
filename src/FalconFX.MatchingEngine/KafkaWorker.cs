@@ -5,47 +5,138 @@ using FalconFX.ServiceDefaults;
 
 namespace FalconFX.MatchingEngine;
 
-public class KafkaWorker(
-    ILogger<KafkaWorker> logger,
-    EngineWorker engine,
-    IConsumer<string, byte[]> consumer, // Inject the pre-configured consumer
-    IConfiguration config) : BackgroundService
+public sealed class KafkaWorker : BackgroundService
 {
+    private const string TopicName = "orders";
+    private const string ServiceName = "KafkaWorker";
+
+    private readonly ILogger<KafkaWorker> _logger;
+    private readonly EngineWorker _engine;
+    private readonly IConsumer<Null, byte[]> _consumer;
+    private readonly IConfiguration _config;
+
+    public KafkaWorker(
+        ILogger<KafkaWorker> logger,
+        EngineWorker engine,
+        IConsumer<Null, byte[]> consumer,
+        IConfiguration config)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // USE THE NEW UTILS
-        await KafkaUtils.WaitForBrokerReady(config, logger, stoppingToken);
+        _logger.LogKafkaWorkerStarting(ServiceName);
 
-        // Run the consumer loop with the injected consumer
-        await Task.Factory.StartNew(() => StartConsumerLoop(consumer, stoppingToken), TaskCreationOptions.LongRunning);
+        // 1. დაველოდოთ Broker-ის მზადყოფნას
+        await KafkaUtils.WaitForBrokerReady(_config, _logger, stoppingToken).ConfigureAwait(false);
+
+        // 2. გავუშვათ Consumer ლუპი Dedicated LongRunning თრედზე
+        await Task.Factory.StartNew(
+            () => StartConsumerLoop(_consumer, stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).ConfigureAwait(false);
     }
 
-    private void StartConsumerLoop(IConsumer<string, byte[]> consumer, CancellationToken token)
+    private void StartConsumerLoop(IConsumer<Null, byte[]> consumer, CancellationToken token)
     {
-        // Subscribe is lazy; it won't crash if topic doesn't exist yet
-        consumer.Subscribe("orders");
-        logger.LogInformation("🚀 Consumer Loop Started");
+        consumer.Subscribe(TopicName);
+        _logger.LogConsumerLoopStarted();
 
-        while (!token.IsCancellationRequested)
+        try
+        {
+            // HOT CONSUMER LOOP
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    // Block until message arrives or cancellation is requested (Microsecond reaction, 0 CPU spin when idle)
+                    var result = consumer.Consume(token);
+                    if (result?.Message?.Value == null) continue;
+
+                    // Protobuf Deserialization
+                    var protoReq = SubmitOrderRequest.Parser.ParseFrom(result.Message.Value);
+
+                    // Zero-alloc mapping to internal Order struct
+                    var order = new Order(
+                        protoReq.Id,
+                        (OrderSide)protoReq.Side,
+                        protoReq.Price,
+                        protoReq.Quantity
+                    );
+
+                    // Enqueue to Matching Engine
+                    _engine.EnqueueOrder(order);
+                }
+                catch (ConsumeException ex)
+                {
+                    if (ex.Error.IsFatal)
+                    {
+                        _logger.LogKafkaFatalError(ex.Error.Reason);
+                    }
+                    else
+                    {
+                        _logger.LogKafkaTransientError(ex.Error.Reason);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected gracefully on shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger.LogKafkaWorkerCriticalError(ex);
+        }
+        finally
+        {
+            _logger.LogClosingConsumer();
             try
             {
-                var result = consumer.Consume(10); // Fast consume
-                if (result?.Message == null) continue;
-
-                var protoReq = SubmitOrderRequest.Parser.ParseFrom(result.Message.Value);
-                engine.EnqueueOrder(new Order(protoReq.Id, (OrderSide)protoReq.Side, protoReq.Price,
-                    protoReq.Quantity));
+                // უზრუნველყოფს Kafka Consumer-ის უსაფრთხო გამოთიშვას (Rebalance)
+                consumer.Close();
             }
-            catch (ConsumeException e)
+            catch (Exception ex)
             {
-                // Only log fatal errors, ignore temporary startups
-                if (e.Error.IsFatal) logger.LogError($"Kafka Error: {e.Error.Reason}");
-            }
-            catch (OperationCanceledException)
-            {
-                break;
+                _logger.LogKafkaConsumerCloseError(ex.Message);
             }
 
-        consumer.Close();
+            _logger.LogKafkaWorkerStopped(ServiceName);
+        }
     }
+}
+
+// ═══════════════════════════════════════════
+//  ZERO-ALLOCATION LOGGING EXTENSIONS
+// ═══════════════════════════════════════════
+internal static partial class KafkaWorkerLogExtensions
+{
+    [LoggerMessage(EventId = 201, Level = LogLevel.Information, Message = "🚀 {ServiceName} starting...")]
+    public static partial void LogKafkaWorkerStarting(this ILogger logger, string serviceName);
+
+    [LoggerMessage(EventId = 202, Level = LogLevel.Information, Message = "🚀 Kafka Consumer Loop Started. Subscribed to 'orders'.")]
+    public static partial void LogConsumerLoopStarted(this ILogger logger);
+
+    [LoggerMessage(EventId = 203, Level = LogLevel.Warning, Message = "Kafka transient consume error: {Reason}")]
+    public static partial void LogKafkaTransientError(this ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 204, Level = LogLevel.Error, Message = "Kafka fatal error: {Reason}")]
+    public static partial void LogKafkaFatalError(this ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 205, Level = LogLevel.Critical, Message = "Unhandled exception in Kafka Consumer loop.")]
+    public static partial void LogKafkaWorkerCriticalError(this ILogger logger, Exception ex);
+
+    [LoggerMessage(EventId = 206, Level = LogLevel.Information, Message = "🧹 Closing Kafka Consumer...")]
+    public static partial void LogClosingConsumer(this ILogger logger);
+
+    [LoggerMessage(EventId = 207, Level = LogLevel.Warning, Message = "Error closing Kafka consumer: {Reason}")]
+    public static partial void LogKafkaConsumerCloseError(this ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 208, Level = LogLevel.Information, Message = "🛑 {ServiceName} stopped gracefully.")]
+    public static partial void LogKafkaWorkerStopped(this ILogger logger, string serviceName);
 }

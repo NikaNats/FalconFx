@@ -1,114 +1,199 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Confluent.Kafka;
 using FalconFX.MatchingEngine.Models;
 using FalconFX.Protos;
+using FalconFX.ServiceDefaults;
 using Google.Protobuf;
 
 namespace FalconFX.MatchingEngine;
 
-public class EngineWorker(ILogger<EngineWorker> logger, IProducer<string, byte[]> producer) : BackgroundService
+public sealed class EngineWorker : BackgroundService
 {
     private const string TradeTopic = "trades";
+    private const int StatsReportIntervalMs = 1000;
+
+    private readonly ILogger<EngineWorker> _logger;
+    private readonly IProducer<Null, byte[]> _producer;
 
     // 1. Input Channel (შემომავალი ორდერები)
-    // SingleReader = true (მხოლოდ ძრავა კითხულობს)
+    // SingleReader = true (მხოლოდ Matching Engine თრედი კითხულობს)
     private readonly Channel<Order> _inputChannel = Channel.CreateUnbounded<Order>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
-    // FIX: Increase pool size from 1,000,000 to 10,000,000
-    private readonly OrderBook _orderBook = new(10_000_000); // 10 მილიონი ორდერის ადგილი
-
     // 2. Output Channel (შემდგარი გარიგებები)
-    // SingleWriter = true (მხოლოდ ძრავა წერს)
+    // SingleReader = true, SingleWriter = true (მხოლოდ Engine წერს, მხოლოდ 1 Consumer კითხულობს)
     private readonly Channel<Trade> _outputChannel = Channel.CreateUnbounded<Trade>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
 
-    // დაამატე ეს ორი ცვლადი
+    // OrderBook 10 მილიონი ორდერის ტევადობით (Intrusive Linked List)
+    private readonly OrderBook _orderBook = new(10_000_000);
+
+    // სტატისტიკის მრიცხველები (Plain long - Interlocked-ის გარეშე hot path-ში)
     private long _ordersProcessed;
     private long _tradesCreated;
 
-    // ეს მეთოდი არის Public API - ამით შემოვა ორდერები გარედან
-    public void EnqueueOrder(Order order)
+    // Zero-Alloc Serialization Buffer ქეში გარიგებებისთვის
+    private readonly byte[][] _bufferCache = new byte[128][];
+
+    public EngineWorker(ILogger<EngineWorker> logger, IProducer<Null, byte[]> producer)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _producer = producer ?? throw new ArgumentNullException(nameof(producer));
+    }
+
+    /// <summary>
+    /// Public API — ორდერების მიღება gRPC/Network-იდან.
+    /// Thread-safe, High-Throughput Enqueue.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void EnqueueOrder(in Order order)
     {
         _inputChannel.Writer.TryWrite(order);
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("🚀 Engine Started. Waiting for orders...");
+        _logger.LogEngineStarting();
 
-        // გავუშვათ ცალკე თრედი შედეგების დამუშავებისთვის (მაგ: ლოგირება ან კაფკა)
-        _ = Task.Run(() => ProcessTradesAsync(stoppingToken), stoppingToken);
+        Instrumentation.RegisterObservableMetrics(
+        getOrdersProcessed: () => Volatile.Read(ref _ordersProcessed),
+        getTradesCreated: () => Volatile.Read(ref _tradesCreated)
+    );
 
-        // გავუშვათ მთავარი ძრავის ლუპი
-        await RunMatchingEngineAsync(stoppingToken);
+        // გავუშვათ Consumer თრედი Kafka-ში Trades გაგზავნისთვის (LongRunning)
+        Task.Factory.StartNew(
+            () => ProcessTradesAsync(stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        // გავუშვათ სტატისტიკის ლოგერი
+        Task.Factory.StartNew(
+            () => ReportStatsAsync(stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        // გავუშვათ მთავარი Matching Engine ლუპი Dedicated LongRunning თრედზე
+        return Task.Factory.StartNew(
+            () => RunMatchingEngineAsync(stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
     }
 
+    // ═══════════════════════════════════════════
+    //  HOT LOOP — SINGLE THREADED MATCHING ENGINE
+    // ═══════════════════════════════════════════
     private async Task RunMatchingEngineAsync(CancellationToken token)
     {
         var reader = _inputChannel.Reader;
-        logger.LogInformation("⚡ Engine loop running...");
+        _logger.LogEngineLoopRunning();
 
-        while (await reader.WaitToReadAsync(token))
-            // FAST LOOP: Consumes everything currently in the channel buffer 
-            // without awaiting until the buffer is empty.
-        while (reader.TryRead(out var order))
+        while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
         {
-            _orderBook.ProcessOrder(order, trade =>
+            // FAST INNER LOOP: კითხულობს ბუფერს CPU Yield-ის გარეშე
+            while (reader.TryRead(out var order))
             {
-                _outputChannel.Writer.TryWrite(trade);
-                // Reduce Interlocked calls for speed (approximate stats are fine for HFT)
-                Instrumentation.TradesCreated.Add(1);
-                Interlocked.Increment(ref _tradesCreated);
-            });
+                _orderBook.ProcessOrder(order, trade =>
+                {
+                    _outputChannel.Writer.TryWrite(trade);
 
-            Instrumentation.OrdersProcessed.Add(1);
-            Interlocked.Increment(ref _ordersProcessed);
+                    // არანაირი Interlocked! ჩვეულებრივი ინკრემენტი single-thread-ში
+                    _tradesCreated++;
+                });
+
+                _ordersProcessed++;
+            }
         }
     }
 
-    // --- CONSUMER THREAD (Output) ---
+    // ═══════════════════════════════════════════
+    //  OUTPUT THREAD — KAFKA PRODUCER (Zero-Alloc)
+    // ═══════════════════════════════════════════
     private async Task ProcessTradesAsync(CancellationToken token)
     {
         var reader = _outputChannel.Reader;
-        var tradeMsg = new Message<string, byte[]> { Key = "EURUSD" }; // Reuse object
+        var protoTrade = new TradeExecuted();
+        var kafkaMessage = new Message<Null, byte[]>();
 
-        // ყოველ 1 წამში ერთხელ დავბეჭდოთ სტატისტიკა
-        var reportingTask = Task.Run(async () =>
+        while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
         {
-            while (!token.IsCancellationRequested)
+            while (reader.TryRead(out var trade))
             {
-                await Task.Delay(1000, token);
-                var orders = Interlocked.Read(ref _ordersProcessed);
-                var trades = Interlocked.Read(ref _tradesCreated);
-                logger.LogInformation(
-                    "📊 STATS: Processed: {Orders:N0} orders | Matches: {Trades:N0} trades", orders, trades);
+                // 1. Mutate reusable Protobuf object in-place
+                protoTrade.Id = trade.Timestamp; // ან Snowflake ID
+                protoTrade.MakerOrderId = trade.MakerOrderId;
+                protoTrade.TakerOrderId = trade.TakerOrderId;
+                protoTrade.Price = trade.Price;
+                protoTrade.Quantity = trade.Quantity;
+                protoTrade.Timestamp = trade.Timestamp;
+                protoTrade.Symbol = "EURUSD";
+
+                // 2. Zero-Alloc Serialization into cached buffer
+                var msgSize = protoTrade.CalculateSize();
+                var buffer = GetOrCreateBuffer(msgSize);
+                protoTrade.WriteTo(buffer.AsSpan(0, msgSize));
+
+                kafkaMessage.Value = buffer;
+
+                // 3. Fire-and-forget produce to Kafka
+                try
+                {
+                    _producer.Produce(TradeTopic, kafkaMessage);
+                }
+                catch (ProduceException<Null, byte[]> ex)
+                {
+                    _logger.LogTradeProduceError(ex.Error.Reason);
+                }
             }
-        }, token);
-
-        while (await reader.WaitToReadAsync(token))
-        while (reader.TryRead(out var trade))
-        {
-            // 1. Map Internal Struct -> Protobuf Class
-            // (Allocates memory, but unavoidable at the edge of the system for I/O)
-            var protoTrade = new TradeExecuted
-            {
-                Id = DateTime.UtcNow.Ticks, // Just a placeholder ID
-                MakerOrderId = trade.MakerOrderId,
-                TakerOrderId = trade.TakerOrderId,
-                Price = (long)trade.Price,
-                Quantity = (long)trade.Quantity,
-                Timestamp = trade.Timestamp,
-                Symbol = "EURUSD"
-            };
-
-            // 2. Serialize
-            tradeMsg.Value = protoTrade.ToByteArray();
-
-            // 3. Produce to Kafka (Non-blocking / Async)
-            producer.Produce(TradeTopic, tradeMsg);
-
-            // Optional: Handle error callback if needed, but keep it light
         }
     }
+
+    // ═══════════════════════════════════════════
+    //  STATS REPORTING TASK
+    // ═══════════════════════════════════════════
+    private async Task ReportStatsAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            await Task.Delay(StatsReportIntervalMs, token).ConfigureAwait(false);
+
+            // Volatile.Read უზრუნველყოფს სხვა თრედიდან ცვლადის უახლესი მნიშვნელობის წაკითხვას Lock-ის გარეშე
+            var orders = Volatile.Read(ref _ordersProcessed);
+            var trades = Volatile.Read(ref _tradesCreated);
+
+            _logger.LogEngineStats(orders, trades);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] GetOrCreateBuffer(int size)
+    {
+        if ((uint)size >= (uint)_bufferCache.Length)
+        {
+            return new byte[size];
+        }
+
+        return _bufferCache[size] ??= new byte[size];
+    }
+}
+
+// ═══════════════════════════════════════════
+//  ZERO-ALLOCATION LOGGING EXTENSIONS
+// ═══════════════════════════════════════════
+internal static partial class EngineLogExtensions
+{
+    [LoggerMessage(EventId = 101, Level = LogLevel.Information, Message = "🚀 Matching Engine Starting...")]
+    public static partial void LogEngineStarting(this ILogger logger);
+
+    [LoggerMessage(EventId = 102, Level = LogLevel.Information, Message = "⚡ Matching Engine Hot Loop Running...")]
+    public static partial void LogEngineLoopRunning(this ILogger logger);
+
+    [LoggerMessage(EventId = 103, Level = LogLevel.Information, Message = "📊 STATS: Processed: {Orders:N0} orders | Matches: {Trades:N0} trades")]
+    public static partial void LogEngineStats(this ILogger logger, long orders, long trades);
+
+    [LoggerMessage(EventId = 104, Level = LogLevel.Warning, Message = "Failed to produce trade to Kafka: {Reason}")]
+    public static partial void LogTradeProduceError(this ILogger logger, string reason);
 }

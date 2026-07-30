@@ -1,11 +1,11 @@
 namespace FalconFX.MatchingEngine.Models;
 
 // გადავაკეთეთ struct-ად
-public readonly struct Trade(decimal price, decimal quantity, long makerId, long takerId)
+public readonly struct Trade(long price, long quantity, long makerId, long takerId, long timestamp = 0)
 {
-    public decimal Price { get; } = price;
-    public decimal Quantity { get; } = quantity;
+    public long Price { get; } = price;
+    public long Quantity { get; } = quantity;
     public long MakerOrderId { get; } = makerId;
     public long TakerOrderId { get; } = takerId;
-    public long Timestamp { get; } = DateTime.UtcNow.Ticks; // DateTime-ის მაგივრად long (Ticks) უფრო სწრაფია
+    public long Timestamp { get; } = timestamp == 0 ? DateTime.UtcNow.Ticks : timestamp; // DateTime-ის მაგივრად long (Ticks) უფრო სწრაფია
 }

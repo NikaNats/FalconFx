@@ -1,10 +1,13 @@
 using FalconFX.MatchingEngine.Models;
 using FalconFX.Protos;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 
 namespace FalconFX.MatchingEngine.Services;
 
-public class GrpcOrderService(EngineWorker engine, ILogger<GrpcOrderService> logger) : OrderService.OrderServiceBase
+public sealed class GrpcOrderService(
+    EngineWorker engine,
+    ILogger<GrpcOrderService> logger) : OrderService.OrderServiceBase
 {
     public override async Task<SubmitOrderResponse> StreamOrders(
         IAsyncStreamReader<SubmitOrderRequest> requestStream,
@@ -14,11 +17,11 @@ public class GrpcOrderService(EngineWorker engine, ILogger<GrpcOrderService> log
         {
             // BEST PRACTICE: Pass CancellationToken to MoveNext
             // This stops the loop immediately if the connection is cut.
-            while (await requestStream.MoveNext(context.CancellationToken))
+            while (await requestStream.MoveNext(context.CancellationToken).ConfigureAwait(false))
             {
                 var req = requestStream.Current;
 
-                // Zero-alloc mapping
+                // Zero-alloc struct mapping
                 var order = new Order(
                     req.Id,
                     (OrderSide)req.Side,
@@ -32,8 +35,7 @@ public class GrpcOrderService(EngineWorker engine, ILogger<GrpcOrderService> log
         catch (IOException)
         {
             // Expected behavior when client disconnects (RST_STREAM)
-            // We swallow this specific error to avoid noisy logs.
-            logger.LogInformation("Client disconnected.");
+            logger.LogInformation("Client disconnected stream.");
         }
         catch (OperationCanceledException)
         {

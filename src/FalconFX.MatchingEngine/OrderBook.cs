@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using FalconFX.MatchingEngine.Models;
 
 namespace FalconFX.MatchingEngine;
@@ -24,12 +25,14 @@ public sealed class OrderBook
     private int _askCount;
     private int _bidCount;
 
-    // 1. კონსტრუქტორი მხოლოდ Pool-ის ზომის მისათითებლად (ტესტებისთვის)
+    // 🔥 O(1) Tracker-ები საუკეთესო ფასის ინდექსების მყისიერი პოვნისტვის
+    private int _bestAskIndex;
+    private int _bestBidIndex;
+
     public OrderBook(int poolSize) : this(90, 110, poolSize)
     {
     }
 
-    // 2. სრული კონსტრუქტორი
     public OrderBook(long minPrice = 90, long maxPrice = 110, int poolSize = 10_000_000)
     {
         _minPrice = minPrice;
@@ -43,24 +46,27 @@ public sealed class OrderBook
         Clear();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public OrderResult ProcessOrder(Order incomingOrder, TradeCallback onTrade)
     {
         var priceIndex = (int)(incomingOrder.Price - _minPrice);
 
-        if (priceIndex < 0 || priceIndex >= _priceLevels)
+        if ((uint)priceIndex >= (uint)_priceLevels)
             return OrderResult.Rejected_PriceOutOfRange;
 
-        var oppositeBook = incomingOrder.Side == OrderSide.Buy ? _asks : _bids;
-        var scaledPrice = (long)incomingOrder.Price;
+        var isBuy = incomingOrder.Side == OrderSide.Buy;
+        var oppositeBook = isBuy ? _asks : _bids;
+        var scaledPrice = incomingOrder.Price;
 
-        while (incomingOrder.RemainingQuantity > 0 && (incomingOrder.Side == OrderSide.Buy ? _askCount : _bidCount) > 0)
+        // MATCHING LOOP
+        while (incomingOrder.RemainingQuantity > 0 && (isBuy ? _askCount : _bidCount) > 0)
         {
-            var bestIndex = FindBestPriceIndex(incomingOrder.Side);
+            var bestIndex = isBuy ? _bestAskIndex : _bestBidIndex;
             if (bestIndex == -1) break;
 
             long bestPrice = bestIndex + _minPrice;
 
-            bool canMatch = incomingOrder.Side == OrderSide.Buy
+            bool canMatch = isBuy
                 ? bestPrice <= scaledPrice
                 : bestPrice >= scaledPrice;
 
@@ -69,8 +75,9 @@ public sealed class OrderBook
             var headIdx = oppositeBook[bestIndex].Head;
             ref var makerOrder = ref _pool.Get(headIdx);
 
-            var tradeQuantity = Math.Min((long)incomingOrder.RemainingQuantity, makerOrder.Quantity);
+            var tradeQuantity = Math.Min(incomingOrder.RemainingQuantity, makerOrder.Quantity);
 
+            // Execute Trade Callback
             onTrade(new Trade(bestPrice, tradeQuantity, makerOrder.Id, incomingOrder.Id));
 
             incomingOrder.RemainingQuantity -= tradeQuantity;
@@ -78,11 +85,12 @@ public sealed class OrderBook
 
             if (makerOrder.Quantity == 0)
             {
-                RemoveNode(oppositeBook, bestIndex, headIdx);
+                RemoveNode(oppositeBook, bestIndex, headIdx, !isBuy);
                 _pool.Return(headIdx);
             }
         }
 
+        // ADD REMAINING TO BOOK
         if (incomingOrder.RemainingQuantity > 0)
         {
             if (!AddToBook(incomingOrder, priceIndex))
@@ -92,24 +100,11 @@ public sealed class OrderBook
         return OrderResult.Success;
     }
 
-    private int FindBestPriceIndex(OrderSide side)
-    {
-        if (side == OrderSide.Buy)
-        {
-            for (var i = 0; i < _priceLevels; i++)
-                if (_asks[i].Head != -1) return i;
-        }
-        else
-        {
-            for (var i = _priceLevels - 1; i >= 0; i--)
-                if (_bids[i].Head != -1) return i;
-        }
-        return -1;
-    }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool AddToBook(Order order, int priceIndex)
     {
-        var book = order.Side == OrderSide.Buy ? _bids : _asks;
+        var isBuy = order.Side == OrderSide.Buy;
+        var book = isBuy ? _bids : _asks;
         ref var level = ref book[priceIndex];
 
         var nodeIdx = _pool.Rent();
@@ -117,15 +112,26 @@ public sealed class OrderBook
 
         ref var node = ref _pool.Get(nodeIdx);
         node.Id = order.Id;
-        node.Quantity = (long)order.RemainingQuantity;
+        node.Quantity = order.RemainingQuantity;
         node.Next = -1;
         node.Prev = -1;
 
         if (level.Head == -1)
         {
             level.Head = level.Tail = nodeIdx;
-            if (book == _bids) _bidCount++;
-            else _askCount++;
+
+            if (isBuy)
+            {
+                _bidCount++;
+                if (_bestBidIndex == -1 || priceIndex > _bestBidIndex)
+                    _bestBidIndex = priceIndex; // განახლდეს უმაღლესი Bid
+            }
+            else
+            {
+                _askCount++;
+                if (_bestAskIndex == -1 || priceIndex < _bestAskIndex)
+                    _bestAskIndex = priceIndex; // განახლდეს უდაბლესი Ask
+            }
         }
         else
         {
@@ -137,7 +143,8 @@ public sealed class OrderBook
         return true;
     }
 
-    private void RemoveNode((int Head, int Tail)[] book, int priceIndex, int nodeIdx)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RemoveNode((int Head, int Tail)[] book, int priceIndex, int nodeIdx, bool isBid)
     {
         ref var level = ref book[priceIndex];
         ref var node = ref _pool.Get(nodeIdx);
@@ -151,11 +158,48 @@ public sealed class OrderBook
         if (next != -1) _pool.Get(next).Prev = prev;
         else level.Tail = prev;
 
+        // თუ ფასის დონე გაცარიელდა
         if (level.Head == -1)
         {
-            if (book == _bids) _bidCount--;
-            else _askCount--;
+            if (isBid)
+            {
+                _bidCount--;
+                if (priceIndex == _bestBidIndex)
+                    UpdateBestBidIndex(); // ვიპოვოთ მომდევნო უმაღლესი Bid
+            }
+            else
+            {
+                _askCount--;
+                if (priceIndex == _bestAskIndex)
+                    UpdateBestAskIndex(); // ვიპოვოთ მომდევნო უდაბლესი Ask
+            }
         }
+    }
+
+    private void UpdateBestAskIndex()
+    {
+        for (var i = _bestAskIndex + 1; i < _priceLevels; i++)
+        {
+            if (_asks[i].Head != -1)
+            {
+                _bestAskIndex = i;
+                return;
+            }
+        }
+        _bestAskIndex = -1;
+    }
+
+    private void UpdateBestBidIndex()
+    {
+        for (var i = _bestBidIndex - 1; i >= 0; i--)
+        {
+            if (_bids[i].Head != -1)
+            {
+                _bestBidIndex = i;
+                return;
+            }
+        }
+        _bestBidIndex = -1;
     }
 
     public void Clear()
@@ -165,9 +209,10 @@ public sealed class OrderBook
         Array.Fill(_asks, (-1, -1));
         _bidCount = 0;
         _askCount = 0;
+        _bestAskIndex = -1;
+        _bestBidIndex = -1;
     }
 
-    // 3. აღდგენილი მეთოდი ტესტებისთვის!
     public (int BidCount, int AskCount) GetDepths()
     {
         return (_bidCount, _askCount);
