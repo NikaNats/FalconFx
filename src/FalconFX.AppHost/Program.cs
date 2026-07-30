@@ -8,46 +8,47 @@ public class AppHostProgram
     {
         var builder = DistributedApplication.CreateBuilder(args);
 
-// 1. Kafka + UI
+        // 1. Kafka + Admin UI (http://localhost:8080)
         var kafka = builder.AddKafka("kafka")
             .WithKafkaUI();
 
-// 2. Postgres (Persistence)
-// Password will be auto-generated, viewable in the Dashboard
+        // 2. Postgres + PgAdmin (http://localhost:5050)
         var postgres = builder.AddPostgres("postgres")
             .WithDataVolume()
-            .WithPgAdmin(); // http://localhost:5050 - SQL Admin Panel
+            .WithPgAdmin();
 
         var tradeDb = postgres.AddDatabase("trade-db");
 
-// 3. Redis (Real-time Ticker / Snapshots)
+        // 3. Redis + Redis Commander (http://localhost:8081)
         var redis = builder.AddRedis("redis")
-            .WithRedisCommander(); // http://localhost:8081 - Redis Admin
+            .WithRedisCommander();
 
-// 4. Services
+        // 4. Matching Engine (Consumes orders from Kafka, Produces trades to Kafka)
         var matchingEngine = builder.AddProject<FalconFX_MatchingEngine>("matching-engine")
-            .WithReference(kafka)
-            // 🔥 This creates the dependency. Engine won't start until Kafka is "Healthy"
-            .WaitFor(kafka); // Engine is now a PRODUCER too
-
-        var marketMaker = builder.AddProject<FalconFX_MarketMaker>("market-maker")
             .WithReference(kafka)
             .WaitFor(kafka);
 
-// 5. NEW: Trade Processor
-// We wait for Kafka and DB to be ready before starting this worker
+        // 5. Market Maker (Generates synthetic order flow)
+        // 🔥 Wait for MatchingEngine to be ready before starting order stream
+        var marketMaker = builder.AddProject<FalconFX_MarketMaker>("market-maker")
+            .WithReference(kafka)
+            .WaitFor(kafka)
+            .WaitFor(matchingEngine);
+
+        // 6. Trade Processor (Saves trades to DB & updates Redis tickers)
         var tradeProcessor = builder.AddProject<FalconFX_TradeProcessor>("trade-processor")
             .WithReference(kafka)
             .WithReference(tradeDb)
             .WithReference(redis)
             .WaitFor(kafka)
-            .WaitFor(tradeDb);
+            .WaitFor(tradeDb)
+            .WaitFor(redis);
 
-// 6. Gateway
+        // 7. Gateway (SignalR Hub for Browser Clients)
         var gateway = builder.AddProject<FalconFX_Gateway>("gateway")
-            .WithReference(redis) // Needs connection to Redis
+            .WithReference(redis)
             .WaitFor(redis)
-            .WithExternalHttpEndpoints(); // Allow browser access
+            .WithExternalHttpEndpoints(); // Serves wwwroot/index.html & SignalR
 
         builder.Build().Run();
     }
