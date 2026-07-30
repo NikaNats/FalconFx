@@ -13,11 +13,17 @@ public class TradeDbContextTests : IDisposable
     {
         // ინ-მემორი ბაზის შექმნა ტესტირებისთვის
         var options = new DbContextOptionsBuilder<TradeDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
         _context = new TradeDbContext(options);
         _context.Database.EnsureCreated();
+    }
+
+    public void Dispose()
+    {
+        _context.Database.EnsureDeleted();
+        _context.Dispose();
     }
 
     [Fact]
@@ -25,8 +31,7 @@ public class TradeDbContextTests : IDisposable
     {
         // Arrange
         var trades = new List<TradeRecord>();
-        for (int i = 0; i < 1000; i++)
-        {
+        for (var i = 0; i < 1000; i++)
             trades.Add(new TradeRecord
             {
                 MakerOrderId = i + 1,
@@ -36,7 +41,6 @@ public class TradeDbContextTests : IDisposable
                 Symbol = "EURUSD",
                 Timestamp = DateTime.UtcNow.Ticks + i
             });
-        }
 
         // Act - ოპტიმიზებული Bulk Add (ChangeTracker გათიშული)
         _context.ChangeTracker.AutoDetectChangesEnabled = false;
@@ -47,7 +51,8 @@ public class TradeDbContextTests : IDisposable
         var savedCount = await _context.Trades.CountAsync(TestContext.Current.CancellationToken);
         savedCount.Should().Be(1000, "1000-ვე ჩანაწერი წარმატებით უნდა შეინახოს ბაზაში");
 
-        var firstTrade = await _context.Trades.FirstOrDefaultAsync(t => t.MakerOrderId == 1, TestContext.Current.CancellationToken);
+        var firstTrade =
+            await _context.Trades.FirstOrDefaultAsync(t => t.MakerOrderId == 1, TestContext.Current.CancellationToken);
         firstTrade.Should().NotBeNull();
         firstTrade!.Symbol.Should().Be("EURUSD");
     }
@@ -72,11 +77,5 @@ public class TradeDbContextTests : IDisposable
         // Assert
         results.Should().HaveCount(2);
         results.All(t => t.Symbol == "EURUSD").Should().BeTrue();
-    }
-
-    public void Dispose()
-    {
-        _context.Database.EnsureDeleted();
-        _context.Dispose();
     }
 }

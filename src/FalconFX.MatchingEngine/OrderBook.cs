@@ -16,18 +16,18 @@ public sealed class OrderBook
 {
     private readonly (int Head, int Tail)[] _asks;
     private readonly (int Head, int Tail)[] _bids;
-    private readonly OrderPool _pool;
+    private readonly long _maxPrice;
 
     private readonly long _minPrice;
-    private readonly long _maxPrice;
+    private readonly OrderPool _pool;
     private readonly int _priceLevels;
 
     private int _askCount;
-    private int _bidCount;
 
     // 🔥 O(1) Tracker-ები საუკეთესო ფასის ინდექსების მყისიერი პოვნისტვის
     private int _bestAskIndex;
     private int _bestBidIndex;
+    private int _bidCount;
 
     public OrderBook(int poolSize) : this(90, 110, poolSize)
     {
@@ -64,9 +64,9 @@ public sealed class OrderBook
             var bestIndex = isBuy ? _bestAskIndex : _bestBidIndex;
             if (bestIndex == -1) break;
 
-            long bestPrice = bestIndex + _minPrice;
+            var bestPrice = bestIndex + _minPrice;
 
-            bool canMatch = isBuy
+            var canMatch = isBuy
                 ? bestPrice <= scaledPrice
                 : bestPrice >= scaledPrice;
 
@@ -92,10 +92,8 @@ public sealed class OrderBook
 
         // ADD REMAINING TO BOOK
         if (incomingOrder.RemainingQuantity > 0)
-        {
             if (!AddToBook(incomingOrder, priceIndex))
                 return OrderResult.Rejected_PoolExhausted;
-        }
 
         return OrderResult.Success;
     }
@@ -179,26 +177,24 @@ public sealed class OrderBook
     private void UpdateBestAskIndex()
     {
         for (var i = _bestAskIndex + 1; i < _priceLevels; i++)
-        {
             if (_asks[i].Head != -1)
             {
                 _bestAskIndex = i;
                 return;
             }
-        }
+
         _bestAskIndex = -1;
     }
 
     private void UpdateBestBidIndex()
     {
         for (var i = _bestBidIndex - 1; i >= 0; i--)
-        {
             if (_bids[i].Head != -1)
             {
                 _bestBidIndex = i;
                 return;
             }
-        }
+
         _bestBidIndex = -1;
     }
 

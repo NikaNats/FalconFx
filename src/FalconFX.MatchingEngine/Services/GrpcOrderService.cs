@@ -1,7 +1,6 @@
 using FalconFX.MatchingEngine.Models;
 using FalconFX.Protos;
 using Grpc.Core;
-using Microsoft.Extensions.Logging;
 
 namespace FalconFX.MatchingEngine.Services;
 

@@ -1,5 +1,4 @@
-﻿using FalconFX.MatchingEngine;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Xunit;
 
 namespace FalconFX.MatchingEngine.Tests;
@@ -15,7 +14,7 @@ public class OrderPoolTests
 
         // Act - Rent all nodes
         var rentedIndices = new List<int>();
-        for (int i = 0; i < poolSize; i++)
+        for (var i = 0; i < poolSize; i++)
         {
             var idx = pool.Rent();
             idx.Should().NotBe(-1);
@@ -39,7 +38,7 @@ public class OrderPoolTests
     {
         // Arrange
         var pool = new OrderPool(5);
-        for (int i = 0; i < 5; i++) pool.Rent();
+        for (var i = 0; i < 5; i++) pool.Rent();
 
         // Act
         pool.Reset();

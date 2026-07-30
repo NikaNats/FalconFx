@@ -9,11 +9,11 @@ public sealed class KafkaWorker : BackgroundService
 {
     private const string TopicName = "orders";
     private const string ServiceName = "KafkaWorker";
+    private readonly IConfiguration _config;
+    private readonly IConsumer<Null, byte[]> _consumer;
+    private readonly EngineWorker _engine;
 
     private readonly ILogger<KafkaWorker> _logger;
-    private readonly EngineWorker _engine;
-    private readonly IConsumer<Null, byte[]> _consumer;
-    private readonly IConfiguration _config;
 
     public KafkaWorker(
         ILogger<KafkaWorker> logger,
@@ -51,7 +51,6 @@ public sealed class KafkaWorker : BackgroundService
         {
             // HOT CONSUMER LOOP
             while (!token.IsCancellationRequested)
-            {
                 try
                 {
                     // Block until message arrives or cancellation is requested (Microsecond reaction, 0 CPU spin when idle)
@@ -75,15 +74,10 @@ public sealed class KafkaWorker : BackgroundService
                 catch (ConsumeException ex)
                 {
                     if (ex.Error.IsFatal)
-                    {
                         _logger.LogKafkaFatalError(ex.Error.Reason);
-                    }
                     else
-                    {
                         _logger.LogKafkaTransientError(ex.Error.Reason);
-                    }
                 }
-            }
         }
         catch (OperationCanceledException)
         {
@@ -119,7 +113,8 @@ internal static partial class KafkaWorkerLogExtensions
     [LoggerMessage(EventId = 201, Level = LogLevel.Information, Message = "🚀 {ServiceName} starting...")]
     public static partial void LogKafkaWorkerStarting(this ILogger logger, string serviceName);
 
-    [LoggerMessage(EventId = 202, Level = LogLevel.Information, Message = "🚀 Kafka Consumer Loop Started. Subscribed to 'orders'.")]
+    [LoggerMessage(EventId = 202, Level = LogLevel.Information,
+        Message = "🚀 Kafka Consumer Loop Started. Subscribed to 'orders'.")]
     public static partial void LogConsumerLoopStarted(this ILogger logger);
 
     [LoggerMessage(EventId = 203, Level = LogLevel.Warning, Message = "Kafka transient consume error: {Reason}")]

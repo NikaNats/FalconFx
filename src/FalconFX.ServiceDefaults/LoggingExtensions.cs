@@ -3,8 +3,8 @@
 namespace FalconFX.ServiceDefaults;
 
 /// <summary>
-/// High-Performance, Zero-Allocation Structured Logging for FalconFX Services.
-/// Uses C# Source Generators to eliminate string interpolation, boxing, and allocations.
+///     High-Performance, Zero-Allocation Structured Logging for FalconFX Services.
+///     Uses C# Source Generators to eliminate string interpolation, boxing, and allocations.
 /// </summary>
 public static partial class LoggingExtensions
 {

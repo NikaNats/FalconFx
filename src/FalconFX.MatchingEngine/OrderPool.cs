@@ -6,8 +6,8 @@ namespace FalconFX.MatchingEngine;
 
 public sealed class OrderPool
 {
-    private int _freeHead;
     private readonly OrderNode[] _memory;
+    private int _freeHead;
 
     public OrderPool(int size)
     {

@@ -7,8 +7,8 @@ using Google.Protobuf;
 namespace FalconFX.MarketMaker;
 
 /// <summary>
-/// Ultra-low latency, zero-allocation Market Maker worker node.
-/// Designed for High-Frequency Trading (HFT) order stream simulation.
+///     Ultra-low latency, zero-allocation Market Maker worker node.
+///     Designed for High-Frequency Trading (HFT) order stream simulation.
 /// </summary>
 public sealed class Worker : BackgroundService
 {
@@ -17,13 +17,13 @@ public sealed class Worker : BackgroundService
     private const int BatchCount = 100;
     private const int StatsReportInterval = 50_000;
 
-    private readonly ILogger<Worker> _logger;
-    private readonly IConfiguration _config;
-
     // Exact-size Buffer Cache for Zero-Alloc Serialization.
     // Protobuf message size varies slightly based on VarInt encoding (typically 20-32 bytes).
     // Array instances per size index are allocated ONCE on first hit and reused forever.
     private readonly byte[][] _bufferCache = new byte[128][];
+    private readonly IConfiguration _config;
+
+    private readonly ILogger<Worker> _logger;
 
     public Worker(ILogger<Worker> logger, IConfiguration config)
     {
@@ -95,8 +95,8 @@ public sealed class Worker : BackgroundService
                     orderId++;
 
                     request.Id = orderId;
-                    request.Side = rng.Next(1, 3);      // 1 = Buy, 2 = Sell
-                    request.Price = rng.Next(99, 102);  // Tight spread [99-101]
+                    request.Side = rng.Next(1, 3); // 1 = Buy, 2 = Sell
+                    request.Price = rng.Next(99, 102); // Tight spread [99-101]
                     request.Quantity = 10;
 
                     // Zero-Alloc Serialization into cached exact-sized buffer
@@ -158,17 +158,15 @@ public sealed class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Returns a pre-allocated exact-sized byte array for the requested size.
-    /// Eliminates GC allocations in the hot path.
+    ///     Returns a pre-allocated exact-sized byte array for the requested size.
+    ///     Eliminates GC allocations in the hot path.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[] GetOrCreateBuffer(int size)
     {
         if ((uint)size >= (uint)_bufferCache.Length)
-        {
             // Fallback for unexpectedly large messages
             return new byte[size];
-        }
 
         return _bufferCache[size] ??= new byte[size];
     }

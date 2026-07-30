@@ -13,10 +13,8 @@ builder.AddRedisClient("redis");
 var redisConnectionString = builder.Configuration.GetConnectionString("redis");
 
 builder.Services.AddSignalR()
-    .AddStackExchangeRedis(redisConnectionString!, options =>
-    {
-        options.Configuration.ChannelPrefix = "FalconFX.SignalR";
-    });
+    .AddStackExchangeRedis(redisConnectionString!,
+        options => { options.Configuration.ChannelPrefix = "FalconFX.SignalR"; });
 
 // 3. Register Background Worker (Redis Listener)
 builder.Services.AddHostedService<RedisSubscriber>();

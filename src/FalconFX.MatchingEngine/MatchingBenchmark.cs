@@ -4,7 +4,7 @@ using FalconFX.MatchingEngine.Models;
 namespace FalconFX.MatchingEngine;
 
 [MemoryDiagnoser] // ამოწმებს GC Allocation-ს (უნდა იყოს ზუსტად 0 B)
-[RankColumn]      // ამატებს Rank (ადგილების) სვეტს შედეგებში
+[RankColumn] // ამატებს Rank (ადგილების) სვეტს შედეგებში
 public class MatchingBenchmark
 {
     // 🔥 დელეგატი შექმნილია 1-ხელ და ქეშირებულია (0 Heap Allocation)
@@ -13,8 +13,7 @@ public class MatchingBenchmark
     private OrderBook _book = null!;
     private Order[] _orders = null!;
 
-    [Params(1000)]
-    public int OrderCount { get; set; }
+    [Params(1000)] public int OrderCount { get; set; }
 
     [GlobalSetup]
     public void Setup()
@@ -42,10 +41,7 @@ public class MatchingBenchmark
         var orders = _orders;
         var callback = CachedCallback;
 
-        for (var i = 0; i < orders.Length; i++)
-        {
-            _book.ProcessOrder(orders[i], callback);
-        }
+        for (var i = 0; i < orders.Length; i++) _book.ProcessOrder(orders[i], callback);
     }
 
     private static void OnTradeStatic(Trade trade)

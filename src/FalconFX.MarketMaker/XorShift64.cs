@@ -3,8 +3,8 @@ using System.Runtime.CompilerServices;
 namespace FalconFX.MarketMaker;
 
 /// <summary>
-/// Sub-nanosecond, zero-allocation Pseudo-Random Number Generator (XorShift64).
-/// Replaces Random.Shared to eliminate lock contention and boxing.
+///     Sub-nanosecond, zero-allocation Pseudo-Random Number Generator (XorShift64).
+///     Replaces Random.Shared to eliminate lock contention and boxing.
 /// </summary>
 public struct XorShift64
 {

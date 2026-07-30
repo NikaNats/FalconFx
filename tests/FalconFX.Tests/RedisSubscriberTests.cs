@@ -1,4 +1,5 @@
-﻿using FalconFX.Gateway.Hubs;
+﻿using System.Reflection;
+using FalconFX.Gateway.Hubs;
 using FalconFX.Gateway.Workers;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
@@ -31,7 +32,7 @@ public class RedisSubscriberTests
 
         // Act - გამოვიძახოთ ProcessMessage (Private/Internal reflection-ით ან ტესტისთვის)
         var method = typeof(RedisSubscriber).GetMethod("ProcessMessage",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            BindingFlags.NonPublic | BindingFlags.Instance);
 
         method!.Invoke(subscriber, new object[] { redisMessage });
 

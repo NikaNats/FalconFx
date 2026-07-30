@@ -104,7 +104,7 @@ public class OrderBookTests
     public void MemoryPool_Should_ReuseNodes_AfterClearing()
     {
         // 100 Capacity Pool
-        var book = new OrderBook(poolSize: 100);
+        var book = new OrderBook(100);
 
         for (var i = 0; i < 20; i++)
             book.ProcessOrder(new Order(i, OrderSide.Buy, 90 + i, 1), _ => { });
@@ -155,7 +155,7 @@ public class OrderBookTests
     [Fact]
     public void Order_OutsidePriceBounds_Should_ReturnRejectedStatus()
     {
-        var book = new OrderBook(minPrice: 90, maxPrice: 110);
+        var book = new OrderBook(90, 110);
 
         var invalidLowOrder = new Order(1, OrderSide.Buy, 85, 10);
         var invalidHighOrder = new Order(2, OrderSide.Buy, 115, 10);
@@ -172,7 +172,7 @@ public class OrderBookTests
     public void Order_WhenPoolExhausted_Should_ReturnPoolExhaustedStatus()
     {
         // შევქმნათ პატარა პული (2 ელემენტიანი)
-        var book = new OrderBook(minPrice: 90, maxPrice: 110, poolSize: 2);
+        var book = new OrderBook(90, 110, 2);
 
         book.ProcessOrder(new Order(1, OrderSide.Buy, 95, 10), _ => { });
         book.ProcessOrder(new Order(2, OrderSide.Buy, 96, 10), _ => { });

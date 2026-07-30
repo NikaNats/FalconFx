@@ -1,7 +1,5 @@
 using Confluent.Kafka;
-using FalconFX.MatchingEngine;
 using FalconFX.MatchingEngine.Models;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
@@ -24,8 +22,8 @@ public class EngineWorkerTests
         var engineTask = engine.StartAsync(cts.Token);
 
         // გავაგზავნოთ 2 დამთხვევადი ორდერი Enqueue-ით
-        var sell = new Order(id: 1, side: OrderSide.Sell, price: 100, quantity: 10);
-        var buy = new Order(id: 2, side: OrderSide.Buy, price: 100, quantity: 10);
+        var sell = new Order(1, OrderSide.Sell, 100, 10);
+        var buy = new Order(2, OrderSide.Buy, 100, 10);
 
         engine.EnqueueOrder(sell);
         engine.EnqueueOrder(buy);

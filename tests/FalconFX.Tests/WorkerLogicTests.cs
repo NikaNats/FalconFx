@@ -15,7 +15,7 @@ public class WorkerLogicTests
         const int minInclusive = 99;
         const int maxExclusive = 102;
 
-        for (int i = 0; i < 100_000; i++)
+        for (var i = 0; i < 100_000; i++)
         {
             var value = rng.Next(minInclusive, maxExclusive);
             value.Should().BeInRange(99, 101);

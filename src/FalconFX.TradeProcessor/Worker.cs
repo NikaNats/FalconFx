@@ -4,7 +4,6 @@ using Confluent.Kafka;
 using FalconFX.Protos;
 using FalconFX.ServiceDefaults;
 using FalconFX.TradeProcessor.Data;
-using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 
 namespace FalconFX.TradeProcessor;
@@ -13,14 +12,13 @@ public readonly record struct TradeWorkItem(TradeRecord Record, TopicPartitionOf
 
 public sealed class Worker : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IConsumer<Null, byte[]> _consumer;
-    private readonly IConnectionMultiplexer _redis;
-    private readonly IConfiguration _config;
-
     private const int BatchSize = 1000;
     private const string Topic = "trades";
+    private readonly IConfiguration _config;
+    private readonly IConsumer<Null, byte[]> _consumer;
+    private readonly ILogger<Worker> _logger;
+    private readonly IConnectionMultiplexer _redis;
+    private readonly IServiceProvider _serviceProvider;
 
     private readonly Channel<TradeWorkItem> _tradeChannel;
 
@@ -83,7 +81,6 @@ public sealed class Worker : BackgroundService
         try
         {
             while (!token.IsCancellationRequested)
-            {
                 try
                 {
                     var result = _consumer.Consume(token);
@@ -95,7 +92,8 @@ public sealed class Worker : BackgroundService
                     var record = TradeRecord.FromProto(trade);
 
                     // Write to In-Memory Channel for DB Batching
-                    await _tradeChannel.Writer.WriteAsync(new TradeWorkItem(record, result.TopicPartitionOffset), token).ConfigureAwait(false);
+                    await _tradeChannel.Writer.WriteAsync(new TradeWorkItem(record, result.TopicPartitionOffset), token)
+                        .ConfigureAwait(false);
 
                     // Redis Market Update (FireAndForget - Non Blocking)
                     _ = UpdateRedisMarketDataAsync(redisDb, trade);
@@ -105,9 +103,10 @@ public sealed class Worker : BackgroundService
                     _logger.LogKafkaConsumeWarning(ex.Error.Reason);
                     await Task.Delay(500, token).ConfigureAwait(false);
                 }
-            }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         finally
         {
             _tradeChannel.Writer.Complete();
@@ -122,11 +121,13 @@ public sealed class Worker : BackgroundService
         trade.Symbol.AsSpan().CopyTo(span);
         span[trade.Symbol.Length] = ':';
 
-        trade.Price.TryFormat(span[(trade.Symbol.Length + 1)..], out int charsWritten);
+        trade.Price.TryFormat(span[(trade.Symbol.Length + 1)..], out var charsWritten);
         var redisPayload = span[..(trade.Symbol.Length + 1 + charsWritten)].ToString();
 
-        await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget).ConfigureAwait(false);
-        await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget).ConfigureAwait(false);
+        await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget)
+            .ConfigureAwait(false);
+        await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget)
+            .ConfigureAwait(false);
     }
 
     private async Task DbBatchWriterLoopAsync(CancellationToken token)
@@ -144,33 +145,22 @@ public sealed class Worker : BackgroundService
                 var completedTask = await Task.WhenAny(readTask, timerTask).ConfigureAwait(false);
 
                 if (completedTask == readTask && await readTask.ConfigureAwait(false))
-                {
                     while (_tradeChannel.Reader.TryRead(out var item))
                     {
                         batch.Add(item);
-                        if (batch.Count >= BatchSize)
-                        {
-                            await FlushBatchAsync(batch, token).ConfigureAwait(false);
-                        }
+                        if (batch.Count >= BatchSize) await FlushBatchAsync(batch, token).ConfigureAwait(false);
                     }
-                }
                 else if (completedTask == timerTask && batch.Count > 0)
-                {
                     await FlushBatchAsync(batch, token).ConfigureAwait(false);
-                }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         finally
         {
-            while (_tradeChannel.Reader.TryRead(out var item))
-            {
-                batch.Add(item);
-            }
-            if (batch.Count > 0)
-            {
-                await FlushBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
-            }
+            while (_tradeChannel.Reader.TryRead(out var item)) batch.Add(item);
+            if (batch.Count > 0) await FlushBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -215,7 +205,8 @@ internal static partial class TradeProcessorLogExtensions
     [LoggerMessage(EventId = 301, Level = LogLevel.Information, Message = "🚀 TradeProcessor Worker starting...")]
     public static partial void LogTradeProcessorStarting(this ILogger logger);
 
-    [LoggerMessage(EventId = 302, Level = LogLevel.Information, Message = "Trade Processor Started. Listening to topic '{Topic}'...")]
+    [LoggerMessage(EventId = 302, Level = LogLevel.Information,
+        Message = "Trade Processor Started. Listening to topic '{Topic}'...")]
     public static partial void LogKafkaConsumerSubscribed(this ILogger logger, string topic);
 
     [LoggerMessage(EventId = 303, Level = LogLevel.Warning, Message = "Kafka Consume Warning: {Reason}. Retrying...")]
@@ -224,6 +215,7 @@ internal static partial class TradeProcessorLogExtensions
     [LoggerMessage(EventId = 304, Level = LogLevel.Warning, Message = "Failed to commit Kafka offsets: {Message}")]
     public static partial void LogKafkaCommitError(this ILogger logger, string message);
 
-    [LoggerMessage(EventId = 305, Level = LogLevel.Information, Message = "💾 Saved {Count:N0} trades to DB in {Time}ms")]
+    [LoggerMessage(EventId = 305, Level = LogLevel.Information,
+        Message = "💾 Saved {Count:N0} trades to DB in {Time}ms")]
     public static partial void LogBatchSaved(this ILogger logger, int count, long time);
 }
