@@ -9,9 +9,13 @@
 
 	<ItemGroup>
 		<PackageReference Include="BenchmarkDotNet" />
+		<PackageReference Include="Aspire.Hosting.Testing" />
+		<PackageReference Include="Npgsql" />
+		<PackageReference Include="NSubstitute" />
 	</ItemGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\..\src\FalconFX.AppHost\FalconFX.AppHost.csproj" />
 		<ProjectReference Include="..\..\src\FalconFX.Gateway\FalconFX.Gateway.csproj" />
 		<ProjectReference Include="..\..\src\FalconFX.MarketMaker\FalconFX.MarketMaker.csproj" />
 		<ProjectReference Include="..\..\src\FalconFX.MatchingEngine\FalconFX.MatchingEngine.csproj" />

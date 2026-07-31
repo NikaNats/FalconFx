@@ -1,6 +1,10 @@
+using System.Text;
 using FalconFX.Gateway.Hubs;
 using FalconFX.Gateway.Workers;
 using FalconFX.ServiceDefaults;
+using StackExchange.Redis;
+
+Console.OutputEncoding = Encoding.UTF8;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,8 +17,11 @@ builder.AddRedisClient("redis");
 var redisConnectionString = builder.Configuration.GetConnectionString("redis");
 
 builder.Services.AddSignalR()
-    .AddStackExchangeRedis(redisConnectionString!,
-        options => { options.Configuration.ChannelPrefix = "FalconFX.SignalR"; });
+    .AddStackExchangeRedis(redisConnectionString!, options =>
+    {
+        // (CS0618): RedisChannel.Literal გამოყენება აუქმებს Obsolete API Warning-ს
+        options.Configuration.ChannelPrefix = RedisChannel.Literal("FalconFX.SignalR");
+    });
 
 // 3. Register Background Worker (Redis Listener)
 builder.Services.AddHostedService<RedisSubscriber>();

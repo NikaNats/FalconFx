@@ -8,7 +8,7 @@ namespace FalconFX.MarketMaker;
 
 /// <summary>
 ///     Ultra-low latency, zero-allocation Market Maker worker node.
-///     Designed for High-Frequency Trading (HFT) order stream simulation.
+///     Generates high-frequency synthetic order streams for matching engine load simulation.
 /// </summary>
 public sealed class Worker : BackgroundService
 {
@@ -17,12 +17,9 @@ public sealed class Worker : BackgroundService
     private const int BatchCount = 100;
     private const int StatsReportInterval = 50_000;
 
-    // Exact-size Buffer Cache for Zero-Alloc Serialization.
-    // Protobuf message size varies slightly based on VarInt encoding (typically 20-32 bytes).
-    // Array instances per size index are allocated ONCE on first hit and reused forever.
+    // Pre-allocated exact-size buffer cache to eliminate GC pressure during serialization
     private readonly byte[][] _bufferCache = new byte[128][];
     private readonly IConfiguration _config;
-
     private readonly ILogger<Worker> _logger;
 
     public Worker(ILogger<Worker> logger, IConfiguration config)
@@ -35,14 +32,14 @@ public sealed class Worker : BackgroundService
     {
         _logger.LogServiceStarting(ServiceName);
 
-        // 1. Validate Infrastructure readiness
+        // 1. Validate Infrastructure Readiness
         await KafkaUtils.WaitForBrokerReady(_config, _logger, stoppingToken).ConfigureAwait(false);
         await KafkaUtils.EnsureTopicExistsAsync(_config, _logger, TopicName).ConfigureAwait(false);
 
         _logger.LogWaitingLeaderElection();
         await Task.Delay(3000, stoppingToken).ConfigureAwait(false);
 
-        // 2. Build HFT-Tuned Kafka Producer
+        // 2. Build HFT-Tuned Kafka Producer Configuration
         var bootstrapServers = _config.GetConnectionString("kafka");
         if (string.IsNullOrWhiteSpace(bootstrapServers))
         {
@@ -54,18 +51,19 @@ public sealed class Worker : BackgroundService
         {
             BootstrapServers = bootstrapServers,
 
-            // Batching & Throughput
+            // Batching & Throughput Optimization
             LingerMs = 5,
-            BatchSize = 1024 * 1024, // 1 MB
+            BatchSize = 512 * 1024, // 512 KB batch size
+            MessageMaxBytes = 900_000, // Safely below Kafka broker default 1MB limit
             BatchNumMessages = 10000,
-            QueueBufferingMaxMessages = 1000000,
-            QueueBufferingMaxKbytes = 512000,
+            QueueBufferingMaxMessages = 1_000_000,
+            QueueBufferingMaxKbytes = 512_000,
             CompressionType = CompressionType.Lz4,
 
             // Durability & Speed Balance
             Acks = Acks.Leader,
 
-            // 🔥 HFT Optimization: Disable delivery report callbacks to eliminate librdkafka event queue allocations
+            // HFT Optimization: Disable delivery callbacks to eliminate librdkafka event queue allocations
             EnableDeliveryReports = false,
 
             // Resilience Timeouts
@@ -73,7 +71,6 @@ public sealed class Worker : BackgroundService
             SocketTimeoutMs = 5000
         };
 
-        // Use Null Key to prevent string key serialization overhead & allocation
         using var producer = new ProducerBuilder<Null, byte[]>(producerConfig).Build();
 
         _logger.LogProducerStarted();
@@ -85,9 +82,6 @@ public sealed class Worker : BackgroundService
 
         try
         {
-            // ═══════════════════════════════════════════
-            //  HOT LOOP — ZERO ALLOCATIONS INSIDE
-            // ═══════════════════════════════════════════
             while (!stoppingToken.IsCancellationRequested)
             {
                 for (var i = 0; i < BatchCount; i++)
@@ -99,7 +93,7 @@ public sealed class Worker : BackgroundService
                     request.Price = rng.Next(99, 102); // Tight spread [99-101]
                     request.Quantity = 10;
 
-                    // Zero-Alloc Serialization into cached exact-sized buffer
+                    // Zero-Alloc Serialization into pre-allocated exact-sized buffer
                     var msgSize = request.CalculateSize();
                     var buffer = GetOrCreateBuffer(msgSize);
 
@@ -110,8 +104,6 @@ public sealed class Worker : BackgroundService
 
                     try
                     {
-                        // Synchronous queue insertion into librdkafka native C-memory buffer.
-                        // Safe to overwrite 'buffer' on next iteration because librdkafka copies payload synchronously during Produce().
                         producer.Produce(TopicName, kafkaMessage);
                     }
                     catch (ProduceException<Null, byte[]> ex)
@@ -124,16 +116,15 @@ public sealed class Worker : BackgroundService
                 // Poll native librdkafka queue events
                 producer.Poll(TimeSpan.Zero);
 
-                if (orderId % StatsReportInterval == 0)
-                {
-                    _logger.LogOrdersSent(orderId);
-                    await Task.Yield(); // Yield CPU briefly to prevent thread starvation
-                }
+                // Throttle execution slightly to prevent unbounded Kafka consumer lag during continuous stream generation
+                await Task.Delay(1, stoppingToken).ConfigureAwait(false);
+
+                if (orderId % StatsReportInterval == 0) _logger.LogOrdersSent(orderId);
             }
         }
         catch (OperationCanceledException)
         {
-            // Expected gracefully on service shutdown
+            // Graceful shutdown on cancellation
         }
         catch (Exception ex)
         {
@@ -145,7 +136,6 @@ public sealed class Worker : BackgroundService
             _logger.LogFlushingProducer();
             try
             {
-                // Guarantee in-flight orders are delivered to Kafka broker before exit
                 producer.Flush(TimeSpan.FromSeconds(5));
             }
             catch (Exception ex)
@@ -165,7 +155,6 @@ public sealed class Worker : BackgroundService
     private byte[] GetOrCreateBuffer(int size)
     {
         if ((uint)size >= (uint)_bufferCache.Length)
-            // Fallback for unexpectedly large messages
             return new byte[size];
 
         return _bufferCache[size] ??= new byte[size];

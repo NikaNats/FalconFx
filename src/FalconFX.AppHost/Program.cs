@@ -1,3 +1,4 @@
+using System.Text;
 using Projects;
 
 namespace FalconFX.AppHost;
@@ -6,6 +7,8 @@ public class AppHostProgram
 {
     public static void Main(string[] args)
     {
+        Console.OutputEncoding = Encoding.UTF8;
+
         var builder = DistributedApplication.CreateBuilder(args);
 
         // 1. Kafka + Admin UI (http://localhost:8080)
@@ -23,19 +26,18 @@ public class AppHostProgram
         var redis = builder.AddRedis("redis")
             .WithRedisCommander();
 
-        // 4. Matching Engine (Consumes orders from Kafka, Produces trades to Kafka)
+        // 4. Matching Engine
         var matchingEngine = builder.AddProject<FalconFX_MatchingEngine>("matching-engine")
             .WithReference(kafka)
             .WaitFor(kafka);
 
-        // 5. Market Maker (Generates synthetic order flow)
-        // 🔥 Wait for MatchingEngine to be ready before starting order stream
+        // 5. Market Maker
         var marketMaker = builder.AddProject<FalconFX_MarketMaker>("market-maker")
             .WithReference(kafka)
             .WaitFor(kafka)
             .WaitFor(matchingEngine);
 
-        // 6. Trade Processor (Saves trades to DB & updates Redis tickers)
+        // 6. Trade Processor
         var tradeProcessor = builder.AddProject<FalconFX_TradeProcessor>("trade-processor")
             .WithReference(kafka)
             .WithReference(tradeDb)
@@ -44,7 +46,7 @@ public class AppHostProgram
             .WaitFor(tradeDb)
             .WaitFor(redis);
 
-        // 7. Gateway (SignalR Hub for Browser Clients)
+        // 7. Gateway
         var gateway = builder.AddProject<FalconFX_Gateway>("gateway")
             .WithReference(redis)
             .WaitFor(redis)

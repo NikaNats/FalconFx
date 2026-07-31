@@ -1,18 +1,27 @@
+using System.Data;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Confluent.Kafka;
 using FalconFX.Protos;
 using FalconFX.ServiceDefaults;
 using FalconFX.TradeProcessor.Data;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using NpgsqlTypes;
 using StackExchange.Redis;
 
 namespace FalconFX.TradeProcessor;
 
 public readonly record struct TradeWorkItem(TradeRecord Record, TopicPartitionOffset Offset);
 
+/// <summary>
+///     High-throughput Trade Processor background worker.
+///     Consumes executed trade events from Kafka, performs PostgreSQL bulk binary COPY insertion,
+///     and broadcasts real-time ticker updates to Redis Pub/Sub.
+/// </summary>
 public sealed class Worker : BackgroundService
 {
-    private const int BatchSize = 1000;
+    private const int BatchSize = 5000;
     private const string Topic = "trades";
     private readonly IConfiguration _config;
     private readonly IConsumer<Null, byte[]> _consumer;
@@ -29,13 +38,13 @@ public sealed class Worker : BackgroundService
         IConnectionMultiplexer redis,
         IConfiguration config)
     {
-        _logger = logger;
-        _serviceProvider = serviceProvider;
-        _consumer = consumer;
-        _redis = redis;
-        _config = config;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        _redis = redis ?? throw new ArgumentNullException(nameof(redis));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
 
-        _tradeChannel = Channel.CreateBounded<TradeWorkItem>(new BoundedChannelOptions(10_000)
+        _tradeChannel = Channel.CreateBounded<TradeWorkItem>(new BoundedChannelOptions(50_000)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
@@ -86,22 +95,18 @@ public sealed class Worker : BackgroundService
                     var result = _consumer.Consume(token);
                     if (result?.Message?.Value == null) continue;
 
-                    // Protobuf Deserialization
                     var trade = TradeExecuted.Parser.ParseFrom(result.Message.Value);
-
                     var record = TradeRecord.FromProto(trade);
 
-                    // Write to In-Memory Channel for DB Batching
                     await _tradeChannel.Writer.WriteAsync(new TradeWorkItem(record, result.TopicPartitionOffset), token)
                         .ConfigureAwait(false);
 
-                    // Redis Market Update (FireAndForget - Non Blocking)
                     _ = UpdateRedisMarketDataAsync(redisDb, trade);
                 }
                 catch (ConsumeException ex)
                 {
                     _logger.LogKafkaConsumeWarning(ex.Error.Reason);
-                    await Task.Delay(500, token).ConfigureAwait(false);
+                    await Task.Delay(100, token).ConfigureAwait(false);
                 }
         }
         catch (OperationCanceledException)
@@ -116,42 +121,41 @@ public sealed class Worker : BackgroundService
 
     private static async Task UpdateRedisMarketDataAsync(IDatabase redisDb, TradeExecuted trade)
     {
-        // Zero-Alloc String Formatting via Span
-        Span<char> span = stackalloc char[trade.Symbol.Length + 1 + 20];
-        trade.Symbol.AsSpan().CopyTo(span);
-        span[trade.Symbol.Length] = ':';
+        try
+        {
+            Span<char> span = stackalloc char[trade.Symbol.Length + 1 + 20];
+            trade.Symbol.AsSpan().CopyTo(span);
+            span[trade.Symbol.Length] = ':';
 
-        trade.Price.TryFormat(span[(trade.Symbol.Length + 1)..], out var charsWritten);
-        var redisPayload = span[..(trade.Symbol.Length + 1 + charsWritten)].ToString();
+            trade.Price.TryFormat(span[(trade.Symbol.Length + 1)..], out var charsWritten);
+            var redisPayload = span[..(trade.Symbol.Length + 1 + charsWritten)].ToString();
 
-        await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget)
-            .ConfigureAwait(false);
-        await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget)
-            .ConfigureAwait(false);
+            await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget)
+                .ConfigureAwait(false);
+            await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // Suppress Redis exceptions to isolate the primary PostgreSQL persistence pipeline
+        }
     }
 
     private async Task DbBatchWriterLoopAsync(CancellationToken token)
     {
         var batch = new List<TradeWorkItem>(BatchSize);
-        using var flushTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
 
         try
         {
-            while (!token.IsCancellationRequested)
+            while (await _tradeChannel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
             {
-                var readTask = _tradeChannel.Reader.WaitToReadAsync(token).AsTask();
-                var timerTask = flushTimer.WaitForNextTickAsync(token).AsTask();
+                while (_tradeChannel.Reader.TryRead(out var item))
+                {
+                    batch.Add(item);
+                    if (batch.Count >= BatchSize) await FlushBatchBinaryCopyAsync(batch, token).ConfigureAwait(false);
+                }
 
-                var completedTask = await Task.WhenAny(readTask, timerTask).ConfigureAwait(false);
-
-                if (completedTask == readTask && await readTask.ConfigureAwait(false))
-                    while (_tradeChannel.Reader.TryRead(out var item))
-                    {
-                        batch.Add(item);
-                        if (batch.Count >= BatchSize) await FlushBatchAsync(batch, token).ConfigureAwait(false);
-                    }
-                else if (completedTask == timerTask && batch.Count > 0)
-                    await FlushBatchAsync(batch, token).ConfigureAwait(false);
+                if (batch.Count > 0) await FlushBatchBinaryCopyAsync(batch, token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -160,28 +164,49 @@ public sealed class Worker : BackgroundService
         finally
         {
             while (_tradeChannel.Reader.TryRead(out var item)) batch.Add(item);
-            if (batch.Count > 0) await FlushBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
+            if (batch.Count > 0) await FlushBatchBinaryCopyAsync(batch, CancellationToken.None).ConfigureAwait(false);
         }
     }
 
-    private async Task FlushBatchAsync(List<TradeWorkItem> batch, CancellationToken token)
+    private async Task FlushBatchBinaryCopyAsync(List<TradeWorkItem> batch, CancellationToken token)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradeDbContext>();
 
-        // 🚀 EF Core Optimization: Disable Change Tracking for Bulk Add
-        db.ChangeTracker.AutoDetectChangesEnabled = false;
-
-        db.Trades.AddRange(batch.Select(x => x.Record));
+        var conn = (NpgsqlConnection)db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open) await conn.OpenAsync(token).ConfigureAwait(false);
 
         var sw = Stopwatch.StartNew();
-        await db.SaveChangesAsync(token).ConfigureAwait(false);
+
+        // PostgreSQL Native Binary Import Protocol (COPY FROM STDIN BINARY)
+        await using (var writer = await conn.BeginBinaryImportAsync(
+                         "COPY \"Trades\" (\"MakerOrderId\", \"TakerOrderId\", \"Price\", \"Quantity\", \"Symbol\", \"Timestamp\", \"InsertedAt\") FROM STDIN (FORMAT BINARY)",
+                         token).ConfigureAwait(false))
+        {
+            foreach (var r in batch.Select(item => item.Record))
+            {
+                await writer.StartRowAsync(token).ConfigureAwait(false);
+                await writer.WriteAsync(r.MakerOrderId, NpgsqlDbType.Bigint, token).ConfigureAwait(false);
+                await writer.WriteAsync(r.TakerOrderId, NpgsqlDbType.Bigint, token).ConfigureAwait(false);
+                await writer.WriteAsync(r.Price, NpgsqlDbType.Bigint, token).ConfigureAwait(false);
+                await writer.WriteAsync(r.Quantity, NpgsqlDbType.Bigint, token).ConfigureAwait(false);
+                await writer.WriteAsync(r.Symbol, NpgsqlDbType.Text, token).ConfigureAwait(false);
+                await writer.WriteAsync(r.Timestamp, NpgsqlDbType.Bigint, token).ConfigureAwait(false);
+                await writer.WriteAsync(r.InsertedAt, NpgsqlDbType.TimestampTz, token).ConfigureAwait(false);
+            }
+
+            await writer.CompleteAsync(token).ConfigureAwait(false);
+        }
+
         sw.Stop();
 
-        // Kafka Offset Commit
+        // Commit maximum Kafka offset per topic-partition
         var offsetsToCommit = batch
             .GroupBy(x => x.Offset.TopicPartition)
-            .Select(g => new TopicPartitionOffset(g.Key, g.Max(x => x.Offset.Offset) + 1));
+            .Select(g => new TopicPartitionOffset(
+                g.Key,
+                new Offset(g.Max(x => x.Offset.Offset.Value) + 1)
+            ));
 
         try
         {
@@ -202,7 +227,7 @@ public sealed class Worker : BackgroundService
 // ═══════════════════════════════════════════
 internal static partial class TradeProcessorLogExtensions
 {
-    [LoggerMessage(EventId = 301, Level = LogLevel.Information, Message = "🚀 TradeProcessor Worker starting...")]
+    [LoggerMessage(EventId = 301, Level = LogLevel.Information, Message = "TradeProcessor Worker starting...")]
     public static partial void LogTradeProcessorStarting(this ILogger logger);
 
     [LoggerMessage(EventId = 302, Level = LogLevel.Information,
@@ -216,6 +241,6 @@ internal static partial class TradeProcessorLogExtensions
     public static partial void LogKafkaCommitError(this ILogger logger, string message);
 
     [LoggerMessage(EventId = 305, Level = LogLevel.Information,
-        Message = "💾 Saved {Count:N0} trades to DB in {Time}ms")]
+        Message = "Saved {Count:N0} trades to database in {Time}ms")]
     public static partial void LogBatchSaved(this ILogger logger, int count, long time);
 }

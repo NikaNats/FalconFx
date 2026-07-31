@@ -1,22 +1,45 @@
 # 📊 FalconFX Performance Benchmark Report
 
 > **Environment:** Intel Core i7-12700H (14C/20T) | Windows 11 (25H2) | .NET 10.0.10 (RyuJIT AVX2)  
-> **Runner:** BenchmarkDotNet v0.15.8 (Release Build)
+> **Runner:** BenchmarkDotNet v0.15.8 & Automated Aspire E2E Harness (`Aspire.Hosting.Testing`)
 
 ---
 
 ## ⚡ Executive Summary
 
-| Component | FalconFX Result | Standard C# | Speedup | Memory Savings |
+| Test Level | Scope | Throughput | Latency | Memory Allocations |
 | :--- | :--- | :--- | :--- | :--- |
-| **OrderBook Matching** | 16.3 ns / order | N/A | **~61.3M orders/sec** | 0 B (Zero-Alloc) |
-| **OrderPool (Memory)** | 241.3 μs | 974.2 μs | **4.04x faster** | -4 MB per 100k ops |
-| **XorShift64 (PRNG)** | 0.278 ns | 0.686 ns | **2.49x faster** | 0 B |
-| **Span Parsing (Gateway)** | 16.77 ns | 32.69 ns | **1.95x faster** | -64% allocations |
+| **Level 1: Micro-Benchmark (BDN)** | Pure C# OrderBook Algorithm | **~61,300,000 ops/sec** | **16.3 ns / order** | **0 B (Zero-Alloc)** |
+| **Level 2: Internal Async Pipeline** | Protobuf SerDe + Channels + Thread | **~2,317,000 ops/sec** | **0.43 μs / order** | Low Alloc |
+| **Level 3: Automated TRUE E2E System** | **Kafka Net + Engine + Postgres Binary COPY** | **5,558 - 23,374 ops/sec** | **0.043 - 0.180 ms / order** | Persistent DB |
 
 ---
 
-## 🔬 Component Breakdown
+## 🌐 Level 3: Automated TRUE End-to-End System Benchmark Results
+
+Measures the entire distributed ecosystem over physical network sockets & infrastructure:  
+`Kafka Network Producer` ➡️ `Kafka Topic (orders)` ➡️ `MatchingEngine` ➡️ `Kafka Topic (trades)` ➡️ `TradeProcessor (Binary COPY)` ➡️ `PostgreSQL Bulk Persistence`
+
+* **Automated Orchestration:** `.NET Aspire AppHost` booted, tested, dynamic endpoints resolved, and shut down automatically in-process via `Aspire.Hosting.Testing`.
+* **PostgreSQL Binary COPY Protocol:** Implemented `NpgsqlBinaryImporter` (`COPY FROM STDIN BINARY`), accelerating bulk persistence to **25,001 trades in 2.14s - 9.00s**.
+* **True E2E System Throughput:** **5,558 - 23,374 orders / sec** (Sustained network + DB persistence pipeline under parallel MarketMaker flow)
+* **True E2E Average Latency:** **0.043 - 0.180 milliseconds / order** (43 - 180 microseconds)
+* **Total Executed Batch:** 50,000 orders over network sockets
+
+---
+
+## 🚀 Level 2: Internal Async Pipeline Benchmark Results
+
+Measures internal async execution:  
+`Protobuf Parse` ➡️ `System.Threading.Channels` ➡️ `EngineWorker Dedicated Thread` ➡️ `OrderBook Match` ➡️ `Trade Serialization`
+
+* **Pipeline Throughput:** **2,317,403 orders / sec**
+* **Average Pipeline Latency:** **0.43 microseconds / order** (431 nanoseconds)
+* **Total Executed Batch:** 500,000 orders in **0.216 seconds**
+
+---
+
+## 🔬 Level 1: Micro-Benchmarks (BenchmarkDotNet)
 
 ### 1. Matching Engine Core (`OrderBookBenchmark`)
 
@@ -37,8 +60,9 @@ Measures L2 OrderBook execution, matching, and removal performance across 100,00
 * **Single-Order Latency:**
   $$\text{Latency} = \frac{1.6297 \text{ ms}}{100,000} = \mathbf{16.29 \text{ ns/order}}$$
 
-	* **Memory Impact:**  
+* **Memory Impact:**  
   The inner execution loop is **0-Allocation**. The reported 96 bytes represents a single lambda delegate capture (`_ => tradeCount++`) at the benchmark execution boundary.
+
 ---
 
 ### 2. Memory Pool vs. Heap Allocations (`OrderPoolBenchmark`)

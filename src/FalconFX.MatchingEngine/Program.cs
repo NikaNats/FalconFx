@@ -1,19 +1,23 @@
-﻿using Confluent.Kafka;
+﻿using System.Text;
+using Confluent.Kafka;
 using FalconFX.MatchingEngine;
 using FalconFX.MatchingEngine.Services;
 using FalconFX.ServiceDefaults;
 
+Console.OutputEncoding = Encoding.UTF8;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Add Aspire Defaults (Metrics, Tracing, HealthChecks)
+// 1. Service Defaults (Telemetry, Health Checks, Service Discovery)
 builder.AddServiceDefaults();
 
-// 2. Configure Kafka Consumer for Orders (Null Key for zero string-allocations)
+// 2. Configure High-Performance Kafka Consumer for Order Ingestion
 builder.AddKafkaConsumer<Null, byte[]>("kafka", settings =>
 {
     settings.Config.GroupId = "matching-engine";
     settings.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
-    settings.Config.EnableAutoCommit = false;
+    settings.Config.EnableAutoCommit = true;
+    settings.Config.AutoCommitIntervalMs = 1000;
     settings.Config.SocketTimeoutMs = 60000;
     settings.Config.ApiVersionRequestTimeoutMs = 10000;
     settings.Config.SessionTimeoutMs = 30000;
@@ -21,16 +25,16 @@ builder.AddKafkaConsumer<Null, byte[]>("kafka", settings =>
     settings.Config.MaxPollIntervalMs = 300000;
 });
 
-// 2.5. Configure Kafka Producer for Trades (HFT Tuned)
+// 2.5. Configure HFT-Tuned Kafka Producer for Executed Trades
 builder.AddKafkaProducer<Null, byte[]>("kafka", settings =>
 {
-    // High throughput settings for trade reporting
     settings.Config.LingerMs = 5;
-    settings.Config.BatchSize = 1024 * 1024; // 1 MB
+    settings.Config.BatchSize = 512 * 1024; // 512 KB batch limit
+    settings.Config.MessageMaxBytes = 900000; // Safely below Kafka broker 1MB default limit
     settings.Config.BatchNumMessages = 10000;
     settings.Config.Acks = Acks.Leader;
 
-    // 🔥 HFT Optimization: Disable delivery report callbacks for trades
+    // HFT Optimization: Disable delivery callbacks to eliminate librdkafka event queue allocations
     settings.Config.EnableDeliveryReports = false;
 });
 
@@ -48,10 +52,10 @@ var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
-// 6. Expose the gRPC Endpoint for Direct High-Speed Order Streaming
+// 6. Expose gRPC Endpoint for Direct High-Speed Order Ingestion
 app.MapGrpcService<GrpcOrderService>();
 
-// Informational endpoint
-app.MapGet("/", () => "🚀 FalconFX Matching Engine is running via gRPC & Kafka");
+// Health/Informational Root Endpoint
+app.MapGet("/", () => "FalconFX Matching Engine active (gRPC & Kafka)");
 
 await app.RunAsync();
