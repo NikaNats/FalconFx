@@ -33,8 +33,8 @@ builder.AddKafkaProducer<long, TradeExecuted>(
     settings =>
     {
         settings.Config.LingerMs = 5;
-        settings.Config.BatchSize = 512 * 1024;                // 512KB
-        settings.Config.MessageMaxBytes = 5242880;              // 5MB limit
+        settings.Config.BatchSize = 512 * 1024; // 512KB
+        settings.Config.MessageMaxBytes = 5242880; // 5MB limit
         settings.Config.BatchNumMessages = 10000;
 
         settings.Config.QueueBufferingMaxMessages = 1_000_000;

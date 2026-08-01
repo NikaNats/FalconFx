@@ -2,7 +2,6 @@
 using Aspire.Hosting.Testing;
 using FalconFX.AppHost;
 using FluentAssertions;
-using Xunit;
 
 namespace FalconFX.IntegrationTests.AppHost;
 
@@ -25,7 +24,6 @@ public class AppHostLifecycleTests
         HttpResponseMessage? response = null;
 
         while (!cts.IsCancellationRequested)
-        {
             try
             {
                 response = await httpClient.GetAsync("/health", cts.Token);
@@ -35,7 +33,6 @@ public class AppHostLifecycleTests
             {
                 await Task.Delay(1000, cts.Token);
             }
-        }
 
         // Assert
         response.Should().NotBeNull();

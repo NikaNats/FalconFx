@@ -48,10 +48,7 @@ public class GatewayParsingPerformanceTests
         var sw = Stopwatch.StartNew();
 
         // Act: 500,000 ტექსტის Span-პარსინგი პირდაპირი დელეგატით
-        for (int i = 0; i < 500_000; i++)
-        {
-            processMessage(payload);
-        }
+        for (var i = 0; i < 500_000; i++) processMessage(payload);
 
         sw.Stop();
 

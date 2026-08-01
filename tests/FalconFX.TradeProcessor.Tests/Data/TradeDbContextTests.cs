@@ -60,8 +60,10 @@ public class TradeDbContextTests : IDisposable
         var nowTicks = DateTime.UtcNow.Ticks;
 
         _context.Trades.AddRange(
-            new TradeRecord { Symbol = "EURUSD", Timestamp = nowTicks, Price = 100, MakerOrderId = 1, TakerOrderId = 2 },
-            new TradeRecord { Symbol = "EURUSD", Timestamp = nowTicks + 10, Price = 101, MakerOrderId = 3, TakerOrderId = 4 },
+            new TradeRecord
+                { Symbol = "EURUSD", Timestamp = nowTicks, Price = 100, MakerOrderId = 1, TakerOrderId = 2 },
+            new TradeRecord
+                { Symbol = "EURUSD", Timestamp = nowTicks + 10, Price = 101, MakerOrderId = 3, TakerOrderId = 4 },
             new TradeRecord { Symbol = "GBPUSD", Timestamp = nowTicks, Price = 130, MakerOrderId = 5, TakerOrderId = 6 }
         );
         await _context.SaveChangesAsync();

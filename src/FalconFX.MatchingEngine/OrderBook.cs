@@ -23,27 +23,27 @@ public sealed class OrderBook
     // Price level heads/tails stored in dense arrays for O(1) indexing
     private readonly (int Head, int Tail)[] _asks;
     private readonly (int Head, int Tail)[] _bids;
+    private readonly long _maxPrice;
 
     private readonly long _minPrice;
-    private readonly long _maxPrice;
-    private readonly int _priceLevels;
 
     private readonly OrderPool _pool;
-
-    // Trackers for active non-empty price level counts
-    private int _bidLevelCount;
+    private readonly int _priceLevels;
     private int _askLevelCount;
+    private int _bestAskIndex;
 
     // O(1) Index Trackers for Best Bid and Best Ask
     private int _bestBidIndex;
-    private int _bestAskIndex;
+
+    // Trackers for active non-empty price level counts
+    private int _bidLevelCount;
 
     /// <summary>
     ///     Initializes an OrderBook supporting price levels from minPrice to maxPrice.
     ///     Default price range supports simulation ticks [90..110].
     /// </summary>
     public OrderBook(int poolSize = 10_000_000)
-        : this(minPrice: 90, maxPrice: 110, poolSize: poolSize)
+        : this(90, 110, poolSize)
     {
     }
 
@@ -108,16 +108,14 @@ public sealed class OrderBook
             // If Maker Order fully filled -> Remove node from list and return index to pool
             if (makerOrder.Quantity == 0)
             {
-                RemoveNode(oppositeBook, bestIndex, headIdx, isBid: !isBuy);
+                RemoveNode(oppositeBook, bestIndex, headIdx, !isBuy);
                 _pool.Return(headIdx);
             }
         }
 
         if (incomingOrder.RemainingQuantity > 0)
-        {
             if (!AddToBook(in incomingOrder, priceIndex))
                 return OrderResult.Rejected_PoolExhausted;
-        }
 
         return OrderResult.Success;
     }
@@ -206,13 +204,11 @@ public sealed class OrderBook
     private void UpdateBestAskIndex()
     {
         for (var i = _bestAskIndex + 1; i < _priceLevels; i++)
-        {
             if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_asks), i).Head != -1)
             {
                 _bestAskIndex = i;
                 return;
             }
-        }
 
         _bestAskIndex = -1;
     }
@@ -221,13 +217,11 @@ public sealed class OrderBook
     private void UpdateBestBidIndex()
     {
         for (var i = _bestBidIndex - 1; i >= 0; i--)
-        {
             if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_bids), i).Head != -1)
             {
                 _bestBidIndex = i;
                 return;
             }
-        }
 
         _bestBidIndex = -1;
     }
@@ -255,10 +249,16 @@ public sealed class OrderBook
     /// <summary>
     ///     Returns the best Bid price currently in the order book (-1 if empty).
     /// </summary>
-    public long GetBestBidPrice() => _bestBidIndex == -1 ? -1 : _bestBidIndex + _minPrice;
+    public long GetBestBidPrice()
+    {
+        return _bestBidIndex == -1 ? -1 : _bestBidIndex + _minPrice;
+    }
 
     /// <summary>
     ///     Returns the best Ask price currently in the order book (-1 if empty).
     /// </summary>
-    public long GetBestAskPrice() => _bestAskIndex == -1 ? -1 : _bestAskIndex + _minPrice;
+    public long GetBestAskPrice()
+    {
+        return _bestAskIndex == -1 ? -1 : _bestAskIndex + _minPrice;
+    }
 }

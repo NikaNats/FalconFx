@@ -10,9 +10,9 @@ using Npgsql;
 namespace FalconFX.Benchmarks;
 
 /// <summary>
-/// Clean End-to-End System Benchmark.
-/// Starts the full Aspire stack but disables the continuous MarketMaker
-/// so we measure pure pipeline throughput of a controlled order burst.
+///     Clean End-to-End System Benchmark.
+///     Starts the full Aspire stack but disables the continuous MarketMaker
+///     so we measure pure pipeline throughput of a controlled order burst.
 /// </summary>
 public static class SystemE2EBenchmark
 {
@@ -46,13 +46,13 @@ public static class SystemE2EBenchmark
         Console.WriteLine($"✅ Kafka Address: {kafkaBootstrap}");
 
         const int totalOrders = 50_000;
-        const int expectedTrades = totalOrders / 2;   // alternating buy/sell @ same price
+        const int expectedTrades = totalOrders / 2; // alternating buy/sell @ same price
 
         Console.WriteLine("⏳ Waiting for PostgreSQL 'trade-db' and 'Trades' table to be created...");
         long initialCount = -1;
         for (var i = 0; i < 30; i++)
         {
-            initialCount = await GetTradeCountAsync(postgresConnString, truncate: true).ConfigureAwait(false);
+            initialCount = await GetTradeCountAsync(postgresConnString, true).ConfigureAwait(false);
             if (initialCount >= 0) break;
             await Task.Delay(2000).ConfigureAwait(false);
         }
@@ -72,7 +72,7 @@ public static class SystemE2EBenchmark
             LingerMs = 5,
             BatchSize = 1_048_576,
             BatchNumMessages = 50_000,
-            MessageMaxBytes = 900_000,          // უსაფრთხო ლიმიტი კლიენტისთვის
+            MessageMaxBytes = 900_000, // უსაფრთხო ლიმიტი კლიენტისთვის
             Acks = Acks.Leader,
             EnableDeliveryReports = false,
             CompressionType = CompressionType.Lz4,
@@ -99,7 +99,7 @@ public static class SystemE2EBenchmark
         for (long i = 1; i <= totalOrders; i++)
         {
             request.Id = i;
-            request.Side = (i % 2 == 0) ? 1 : 2;   // Buy / Sell alternating
+            request.Side = i % 2 == 0 ? 1 : 2; // Buy / Sell alternating
             request.Price = 100;
 
             message.Key = i;
@@ -118,7 +118,7 @@ public static class SystemE2EBenchmark
         // Wait for persistence
         Console.WriteLine("⏳ Waiting for trades to land in PostgreSQL...");
 
-        long currentCount = initialCount;
+        var currentCount = initialCount;
         var lastReport = sw.Elapsed;
 
         while (currentCount < initialCount + expectedTrades)
@@ -144,7 +144,7 @@ public static class SystemE2EBenchmark
         var persisted = currentCount - initialCount;
         var totalSec = sw.Elapsed.TotalSeconds;
         var throughput = totalOrders / totalSec;
-        var latencyMs = (totalSec * 1000) / totalOrders;
+        var latencyMs = totalSec * 1000 / totalOrders;
 
         Console.WriteLine("\n=================================================");
         Console.WriteLine("E2E BENCHMARK RESULTS");

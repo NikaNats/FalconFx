@@ -5,7 +5,6 @@ using FluentAssertions;
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Xunit;
 
 namespace FalconFX.MatchingEngine.Tests.Services;
 

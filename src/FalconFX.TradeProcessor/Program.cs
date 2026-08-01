@@ -19,8 +19,8 @@ builder.AddKafkaConsumer<Ignore, byte[]>("kafka", settings =>
     settings.Config.EnableAutoCommit = true;
     settings.Config.AutoCommitIntervalMs = 1000;
     settings.Config.EnableAutoOffsetStore = false;
-    settings.Config.FetchMinBytes = 1;             // Zero fetch delay
-    settings.Config.FetchMaxBytes = 10_000_000;    // 10MB batch capacity
+    settings.Config.FetchMinBytes = 1; // Zero fetch delay
+    settings.Config.FetchMaxBytes = 10_000_000; // 10MB batch capacity
     settings.Config.MaxPollIntervalMs = 300000;
     settings.Config.SocketTimeoutMs = 30000;
 });

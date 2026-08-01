@@ -18,23 +18,28 @@ public sealed class RedisSubscriber : BackgroundService
 {
     // OpenTelemetry Metrics (2026 Observability Standard)
     private static readonly Meter GatewayMeter = new("FalconFX.Gateway");
+
     private static readonly Counter<long> UpdatesReceivedCounter =
-        GatewayMeter.CreateCounter<long>("gateway.updates.received", "updates", "Total market updates received from Redis");
+        GatewayMeter.CreateCounter<long>("gateway.updates.received", "updates",
+            "Total market updates received from Redis");
+
     private static readonly Counter<long> UpdatesBroadcastedCounter =
-        GatewayMeter.CreateCounter<long>("gateway.updates.broadcasted", "broadcasts", "Total updates pushed to SignalR clients");
+        GatewayMeter.CreateCounter<long>("gateway.updates.broadcasted", "broadcasts",
+            "Total updates pushed to SignalR clients");
 
     // .NET 9/10 Alternate Lookup Dictionary for Zero-Allocation ReadOnlySpan<char> string pooling
     private static readonly ConcurrentDictionary<string, string> SymbolPool = new();
+
     private static readonly ConcurrentDictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> SymbolLookup =
         SymbolPool.GetAlternateLookup<ReadOnlySpan<char>>();
 
     private readonly IConfiguration _config;
     private readonly IHubContext<MarketHub, IMarketClient> _hubContext;
     private readonly ILogger<RedisSubscriber> _logger;
-    private readonly IConnectionMultiplexer _redis;
 
     // Channel decouples Redis Pub/Sub receiving from SignalR WebSocket broadcasting (DropOldest prevents backpressure)
     private readonly Channel<(string Symbol, long Price)> _marketChannel;
+    private readonly IConnectionMultiplexer _redis;
 
     public RedisSubscriber(
         ILogger<RedisSubscriber> logger,
@@ -84,7 +89,7 @@ public sealed class RedisSubscriber : BackgroundService
         try
         {
             ReadOnlyMemory<byte> memory = message;
-            ReadOnlySpan<byte> span = memory.Span;
+            var span = memory.Span;
 
             var colonIdx = span.IndexOf((byte)':');
             if (colonIdx > 0)
@@ -122,22 +127,18 @@ public sealed class RedisSubscriber : BackgroundService
         try
         {
             while (await _marketChannel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
-            {
-                while (_marketChannel.Reader.TryRead(out var update))
+            while (_marketChannel.Reader.TryRead(out var update))
+                try
                 {
-                    try
-                    {
-                        await _hubContext.Clients.All.ReceiveMarketUpdate(update.Symbol, update.Price)
-                            .ConfigureAwait(false);
+                    await _hubContext.Clients.All.ReceiveMarketUpdate(update.Symbol, update.Price)
+                        .ConfigureAwait(false);
 
-                        UpdatesBroadcastedCounter.Add(1);
-                    }
-                    catch
-                    {
-                        // Suppress web client socket disconnect errors
-                    }
+                    UpdatesBroadcastedCounter.Add(1);
                 }
-            }
+                catch
+                {
+                    // Suppress web client socket disconnect errors
+                }
         }
         catch (OperationCanceledException)
         {
@@ -145,7 +146,6 @@ public sealed class RedisSubscriber : BackgroundService
         }
     }
 }
-
 
 internal static partial class RedisSubscriberLogExtensions
 {

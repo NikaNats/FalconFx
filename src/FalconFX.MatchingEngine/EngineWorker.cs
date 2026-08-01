@@ -1,4 +1,3 @@
-using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Confluent.Kafka;
@@ -9,8 +8,8 @@ using Google.Protobuf;
 namespace FalconFX.MatchingEngine;
 
 /// <summary>
-/// Ultra-low latency, single-threaded Matching Engine.
-/// Zero-allocation matching + high-throughput trade publishing.
+///     Ultra-low latency, single-threaded Matching Engine.
+///     Zero-allocation matching + high-throughput trade publishing.
 /// </summary>
 public sealed class EngineWorker : BackgroundService
 {
@@ -18,7 +17,6 @@ public sealed class EngineWorker : BackgroundService
     private const string TradesTopic = "trades";
 
     private readonly ILogger<EngineWorker> _logger;
-    private readonly IProducer<long, TradeExecuted> _tradeProducer;
     private readonly OrderBook _orderBook;
 
     private readonly Channel<Order> _orderChannel = Channel.CreateBounded<Order>(new BoundedChannelOptions(1_000_000)
@@ -27,6 +25,8 @@ public sealed class EngineWorker : BackgroundService
         SingleReader = true,
         SingleWriter = false
     });
+
+    private readonly IProducer<long, TradeExecuted> _tradeProducer;
 
     private long _ordersProcessed;
     private long _tradesMatched;
@@ -48,6 +48,7 @@ public sealed class EngineWorker : BackgroundService
             Interlocked.Increment(ref _ordersProcessed);
             return true;
         }
+
         return false;
     }
 
@@ -83,46 +84,43 @@ public sealed class EngineWorker : BackgroundService
         try
         {
             while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
-            {
-                while (reader.TryRead(out var order))
+            while (reader.TryRead(out var order))
+                _orderBook.ProcessOrder(order, trade =>
                 {
-                    _orderBook.ProcessOrder(order, trade =>
+                    Interlocked.Increment(ref _tradesMatched);
+
+                    var tradeProto = new TradeExecuted
                     {
-                        Interlocked.Increment(ref _tradesMatched);
+                        MakerOrderId = trade.MakerOrderId,
+                        TakerOrderId = trade.TakerOrderId,
+                        Price = trade.Price,
+                        Quantity = trade.Quantity,
+                        Symbol = "EURUSD",
+                        Timestamp = trade.Timestamp
+                    };
 
-                        var tradeProto = new TradeExecuted
-                        {
-                            MakerOrderId = trade.MakerOrderId,
-                            TakerOrderId = trade.TakerOrderId,
-                            Price = trade.Price,
-                            Quantity = trade.Quantity,
-                            Symbol = "EURUSD",
-                            Timestamp = trade.Timestamp
-                        };
+                    var message = new Message<long, TradeExecuted>
+                    {
+                        Key = trade.MakerOrderId,
+                        Value = tradeProto
+                    };
 
-                        var message = new Message<long, TradeExecuted>
+                    while (!token.IsCancellationRequested)
+                        try
                         {
-                            Key = trade.MakerOrderId,
-                            Value = tradeProto
-                        };
-
-                        while (!token.IsCancellationRequested)
-                        {
-                            try
-                            {
-                                _tradeProducer.Produce(TradesTopic, message);
-                                break;
-                            }
-                            catch (ProduceException<long, TradeExecuted> ex) when (ex.Error.Code == ErrorCode.Local_QueueFull)
-                            {
-                                _tradeProducer.Poll(TimeSpan.FromMilliseconds(1));
-                            }
+                            _tradeProducer.Produce(TradesTopic, message);
+                            break;
                         }
-                    });
-                }
-            }
+                        catch (ProduceException<long, TradeExecuted> ex) when (ex.Error.Code ==
+                                                                               ErrorCode.Local_QueueFull)
+                        {
+                            _tradeProducer.Poll(TimeSpan.FromMilliseconds(1));
+                        }
+                });
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private async Task RunStatsLoop(CancellationToken token)
@@ -136,12 +134,14 @@ public sealed class EngineWorker : BackgroundService
                     Interlocked.Read(ref _ordersProcessed), Interlocked.Read(ref _tradesMatched));
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
     }
 }
 
 /// <summary>
-/// High-performance Protobuf serializer using uninitialized buffers.
+///     High-performance Protobuf serializer using uninitialized buffers.
 /// </summary>
 public sealed class TradeExecutedSerializer : ISerializer<TradeExecuted>
 {

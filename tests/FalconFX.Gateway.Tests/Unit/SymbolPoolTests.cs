@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Collections;
+using System.Reflection;
 using FalconFX.Gateway.Hubs;
 using FalconFX.Gateway.Workers;
 using FluentAssertions;
@@ -32,16 +33,13 @@ public class SymbolPoolTests
             BindingFlags.NonPublic | BindingFlags.Instance);
 
         // Act: 1000-ჯერ გავატაროთ EURUSD
-        for (int i = 0; i < 1000; i++)
-        {
-            method!.Invoke(subscriber, new object[] { (RedisValue)"EURUSD:10000" });
-        }
+        for (var i = 0; i < 1000; i++) method!.Invoke(subscriber, new object[] { (RedisValue)"EURUSD:10000" });
 
         // Assert: SymbolPool-ში უნდა იყოს მხოლოდ 1 ჩანაწერი
         var symbolPoolField = typeof(RedisSubscriber).GetField("SymbolPool",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var poolDict = symbolPoolField!.GetValue(null) as System.Collections.IDictionary;
+        var poolDict = symbolPoolField!.GetValue(null) as IDictionary;
 
         poolDict.Should().NotBeNull();
         poolDict!.Contains("EURUSD").Should().BeTrue();

@@ -30,7 +30,6 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-
         if (string.Equals(
                 Environment.GetEnvironmentVariable("BENCHMARK_MODE"),
                 "true",
@@ -75,8 +74,8 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
                     orderId++;
 
                     request.Id = orderId;
-                    request.Side = rng.Next(1, 3);          // 1 = Buy, 2 = Sell
-                    request.Price = rng.Next(99, 102);      // Tight spread
+                    request.Side = rng.Next(1, 3); // 1 = Buy, 2 = Sell
+                    request.Price = rng.Next(99, 102); // Tight spread
                     request.Quantity = 10;
 
                     message.Key = orderId;
@@ -170,7 +169,7 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
 }
 
 /// <summary>
-/// High-performance Protobuf serializer using uninitialized memory.
+///     High-performance Protobuf serializer using uninitialized memory.
 /// </summary>
 internal sealed class ProtobufSubmitOrderSerializer : ISerializer<SubmitOrderRequest>
 {

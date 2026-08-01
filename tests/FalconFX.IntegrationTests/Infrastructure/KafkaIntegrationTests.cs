@@ -5,7 +5,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.Kafka;
-using Xunit;
 
 namespace FalconFX.IntegrationTests.Infrastructure;
 
@@ -48,7 +47,13 @@ public class KafkaIntegrationTests : IAsyncLifetime
         await Task.Delay(5000);
         await cts.CancelAsync();
 
-        try { await workerTask; } catch (OperationCanceledException) { }
+        try
+        {
+            await workerTask;
+        }
+        catch (OperationCanceledException)
+        {
+        }
 
         // Act 2: Consume messages from Kafka topic 'orders' (Using long key deserializer)
         var consumerConfig = new ConsumerConfig

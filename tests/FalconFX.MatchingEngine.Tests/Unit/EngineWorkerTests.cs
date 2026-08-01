@@ -1,10 +1,8 @@
 ﻿using Confluent.Kafka;
 using FalconFX.MatchingEngine.Models;
 using FalconFX.Protos;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Xunit;
 
 namespace FalconFX.MatchingEngine.Tests.Unit;
 

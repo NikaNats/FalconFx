@@ -51,7 +51,6 @@ public sealed class KafkaWorker : BackgroundService
         try
         {
             while (!token.IsCancellationRequested)
-            {
                 try
                 {
                     var result = consumer.Consume(TimeSpan.FromMilliseconds(10));
@@ -68,9 +67,7 @@ public sealed class KafkaWorker : BackgroundService
                         );
 
                         if (!_engine.EnqueueOrder(order))
-                        {
                             await _engine.EnqueueOrderAsync(order, token).ConfigureAwait(false);
-                        }
 
                         result = consumer.Consume(TimeSpan.Zero);
                     }
@@ -82,12 +79,20 @@ public sealed class KafkaWorker : BackgroundService
                     else
                         _logger.LogKafkaTransientError(ex.Error.Reason);
                 }
-            }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         finally
         {
-            try { consumer.Close(); } catch { }
+            try
+            {
+                consumer.Close();
+            }
+            catch
+            {
+            }
+
             _logger.LogKafkaWorkerStopped(ServiceName);
         }
     }
@@ -98,7 +103,8 @@ internal static partial class KafkaWorkerLogExtensions
     [LoggerMessage(EventId = 201, Level = LogLevel.Information, Message = "🚀 {ServiceName} starting...")]
     public static partial void LogKafkaWorkerStarting(this ILogger logger, string serviceName);
 
-    [LoggerMessage(EventId = 202, Level = LogLevel.Information, Message = "🚀 Kafka Consumer Loop Started. Subscribed to 'orders'.")]
+    [LoggerMessage(EventId = 202, Level = LogLevel.Information,
+        Message = "🚀 Kafka Consumer Loop Started. Subscribed to 'orders'.")]
     public static partial void LogConsumerLoopStarted(this ILogger logger);
 
     [LoggerMessage(EventId = 203, Level = LogLevel.Warning, Message = "Kafka transient consume error: {Reason}")]

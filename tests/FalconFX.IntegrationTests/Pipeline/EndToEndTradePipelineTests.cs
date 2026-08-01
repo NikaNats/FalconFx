@@ -2,7 +2,6 @@
 using Aspire.Hosting.Testing;
 using FalconFX.AppHost;
 using FluentAssertions;
-using Xunit;
 
 namespace FalconFX.IntegrationTests.Pipeline;
 
@@ -31,7 +30,8 @@ public class EndToEndTradePipelineTests
         content.Should().Contain("FALCON");
 
         // Act 2: Check SignalR Hub endpoint availability
-        var hubNegotiateResponse = await httpClient.PostAsync("/markethub/negotiate?negotiateVersion=1", null, cts.Token);
+        var hubNegotiateResponse =
+            await httpClient.PostAsync("/markethub/negotiate?negotiateVersion=1", null, cts.Token);
 
         // Assert 2: SignalR Negotiate should return 200 OK or 400 (if version missing), but not 404
         hubNegotiateResponse.StatusCode.Should().NotBe(HttpStatusCode.NotFound);

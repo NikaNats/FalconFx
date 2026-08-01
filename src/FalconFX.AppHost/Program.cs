@@ -14,7 +14,8 @@ public class AppHostProgram
         // 1. Kafka + Kafka UI
         var kafka = builder.AddKafka("kafka")
             .WithEnvironment("KAFKA_HEAP_OPTS", "-Xms512m -Xmx1024m")
-            .WithEnvironment("KAFKA_LOG4J_LOGGERS", "kafka.controller=WARN,state.change.logger=WARN,kafka.log.LogLoader=WARN,kafka.coordinator.group=WARN")
+            .WithEnvironment("KAFKA_LOG4J_LOGGERS",
+                "kafka.controller=WARN,state.change.logger=WARN,kafka.log.LogLoader=WARN,kafka.coordinator.group=WARN")
             .WithKafkaUI();
 
         // 2. Postgres + PgAdmin
@@ -44,9 +45,7 @@ public class AppHostProgram
                 Environment.GetEnvironmentVariable("BENCHMARK_MODE"),
                 "true",
                 StringComparison.OrdinalIgnoreCase))
-        {
             marketMaker = marketMaker.WithEnvironment("BENCHMARK_MODE", "true");
-        }
 
         // 6. Trade Processor
         var tradeProcessor = builder.AddProject<FalconFX_TradeProcessor>("trade-processor")

@@ -13,13 +13,16 @@ namespace FalconFX.Gateway.Tests.Unit;
 
 public class RedisSubscriberTests : IAsyncLifetime
 {
-    private readonly IConnectionMultiplexer _redis = Substitute.For<IConnectionMultiplexer>();
-    private readonly ISubscriber _subscriberMock = Substitute.For<ISubscriber>();
-    private readonly IHubContext<MarketHub, IMarketClient> _hubContext = Substitute.For<IHubContext<MarketHub, IMarketClient>>();
     private readonly IMarketClient _clientProxy = Substitute.For<IMarketClient>();
     private readonly IConfiguration _config = Substitute.For<IConfiguration>();
-    private readonly RedisSubscriber _subscriber;
     private readonly CancellationTokenSource _cts = new();
+
+    private readonly IHubContext<MarketHub, IMarketClient> _hubContext =
+        Substitute.For<IHubContext<MarketHub, IMarketClient>>();
+
+    private readonly IConnectionMultiplexer _redis = Substitute.For<IConnectionMultiplexer>();
+    private readonly RedisSubscriber _subscriber;
+    private readonly ISubscriber _subscriberMock = Substitute.For<ISubscriber>();
 
     public RedisSubscriberTests()
     {
@@ -66,9 +69,9 @@ public class RedisSubscriberTests : IAsyncLifetime
 
     [Theory]
     [InlineData("")]
-    [InlineData("EURUSD")]             // No colon
-    [InlineData("EURUSD:INVALID")]     // Non-numeric price
-    [InlineData(":10000")]             // Missing symbol
+    [InlineData("EURUSD")] // No colon
+    [InlineData("EURUSD:INVALID")] // Non-numeric price
+    [InlineData(":10000")] // Missing symbol
     public async Task ProcessMessage_MalformedPayload_ShouldHandleGracefullyWithoutException(string badMessage)
     {
         // Act

@@ -43,7 +43,7 @@ public class TradeRedisTickerTests
         await redisDb.Received(1).PublishAsync(
             Arg.Is<RedisChannel>(c => c.ToString() == "market_updates"),
             Arg.Is<RedisValue>(v => v.ToString() == "EURUSD:10550"),
-            flags: CommandFlags.FireAndForget
+            CommandFlags.FireAndForget
         );
     }
 }
