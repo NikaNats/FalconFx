@@ -11,8 +11,6 @@ public static class KafkaUtils
     {
         var connectionString = config.GetConnectionString("kafka");
 
-        // Configuration specifically for the Health Check
-        // Increased timeouts to 10s to handle slow container startup/network
         var configDict = new AdminClientConfig
         {
             BootstrapServers = connectionString,
@@ -28,27 +26,24 @@ public static class KafkaUtils
             try
             {
                 using var adminClient = new AdminClientBuilder(configDict)
-                    // Enable error logging to debug connection issues
                     .SetLogHandler((_, msg) =>
                     {
                         if (msg.Level < SyslogLevel.Info)
-                            logger.LogDebug($"[Kafka Admin] {msg.Message}");
+                            logger.LogDebug("[Kafka Admin] {Message}", msg.Message);
                     })
                     .Build();
 
-                // Give it 5 seconds to respond
                 var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
 
                 if (metadata.Brokers.Count > 0)
                 {
-                    logger.LogInformation($"✅ Kafka is READY. Found {metadata.Brokers.Count} brokers.");
-                    return; // Exit the loop and start the app
+                    logger.LogInformation("✅ Kafka is READY. Found {Count} brokers.", metadata.Brokers.Count);
+                    return;
                 }
             }
             catch (Exception ex)
             {
-                // Log failure as warning so we know it's trying (and failing)
-                logger.LogWarning($"Waiting for Kafka... ({ex.Message})");
+                logger.LogWarning("Waiting for Kafka... ({Message})", ex.Message);
             }
 
             await Task.Delay(2000, token);
@@ -71,15 +66,20 @@ public static class KafkaUtils
 
         try
         {
-            await adminClient.CreateTopicsAsync([
-                new TopicSpecification
+            var topicSpec = new TopicSpecification
+            {
+                Name = topicName,
+                NumPartitions = numPartitions,
+                ReplicationFactor = replicationFactor,
+                Configs = new Dictionary<string, string>
                 {
-                    Name = topicName,
-                    NumPartitions = numPartitions,
-                    ReplicationFactor = replicationFactor
+                    { "max.message.bytes", "10485760" }, // 10 MB
+                    { "compression.type", "lz4" }
                 }
-            ]);
-            logger.LogInformation("✅ Topic '{TopicName}' created successfully.", topicName);
+            };
+
+            await adminClient.CreateTopicsAsync(new[] { topicSpec });
+            logger.LogInformation("✅ Topic '{TopicName}' created successfully with 10MB payload limit.", topicName);
         }
         catch (CreateTopicsException e)
         {

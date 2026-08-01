@@ -5,6 +5,7 @@ using FluentAssertions;
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Xunit;
 
 namespace FalconFX.MatchingEngine.Tests.Services;
 
@@ -13,8 +14,8 @@ public class GrpcOrderServiceTests
     [Fact]
     public async Task StreamOrders_ShouldEnqueueAllIncomingOrders()
     {
-        // Arrange
-        var kafkaProducer = Substitute.For<IProducer<Null, byte[]>>();
+        // Arrange: Mock the typed Kafka producer required by EngineWorker
+        var kafkaProducer = Substitute.For<IProducer<long, TradeExecuted>>();
         var engineWorker = new EngineWorker(NullLogger<EngineWorker>.Instance, kafkaProducer);
         var service = new GrpcOrderService(engineWorker, NullLogger<GrpcOrderService>.Instance);
 
@@ -28,7 +29,7 @@ public class GrpcOrderServiceTests
         };
 
         var index = -1;
-        requestStream.MoveNext(Arg.Any<CancellationToken>()).Returns(call =>
+        requestStream.MoveNext(Arg.Any<CancellationToken>()).Returns(_ =>
         {
             index++;
             if (index < ordersToStream.Count)
@@ -46,13 +47,17 @@ public class GrpcOrderServiceTests
         // Act
         var response = await service.StreamOrders(requestStream, serverCallContext);
 
-        await Task.Delay(100);
+        // Allow async channels to drain
+        await Task.Delay(150);
         await engineWorker.StopAsync(cts.Token);
 
         // Assert
         response.Success.Should().BeTrue();
 
-        // Ensure trade was executed and sent to Kafka
-        kafkaProducer.Received(1).Produce(Arg.Is("trades"), Arg.Any<Message<Null, byte[]>>());
+        // Ensure trade was executed and produced to Kafka as a typed TradeExecuted message
+        kafkaProducer.Received(1).Produce(
+            Arg.Is("trades"),
+            Arg.Any<Message<long, TradeExecuted>>()
+        );
     }
 }

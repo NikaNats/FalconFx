@@ -11,18 +11,20 @@ public class AppHostProgram
 
         var builder = DistributedApplication.CreateBuilder(args);
 
-        // 1. Kafka + Admin UI (http://localhost:8080)
+        // 1. Kafka + Kafka UI
         var kafka = builder.AddKafka("kafka")
+            .WithEnvironment("KAFKA_HEAP_OPTS", "-Xms512m -Xmx1024m")
+            .WithEnvironment("KAFKA_LOG4J_LOGGERS", "kafka.controller=WARN,state.change.logger=WARN,kafka.log.LogLoader=WARN,kafka.coordinator.group=WARN")
             .WithKafkaUI();
 
-        // 2. Postgres + PgAdmin (http://localhost:5050)
+        // 2. Postgres + PgAdmin
         var postgres = builder.AddPostgres("postgres")
             .WithDataVolume()
             .WithPgAdmin();
 
         var tradeDb = postgres.AddDatabase("trade-db");
 
-        // 3. Redis + Redis Commander (http://localhost:8081)
+        // 3. Redis + Redis Commander
         var redis = builder.AddRedis("redis")
             .WithRedisCommander();
 
@@ -36,6 +38,15 @@ public class AppHostProgram
             .WithReference(kafka)
             .WaitFor(kafka)
             .WaitFor(matchingEngine);
+
+        // Only force idle mode when the clean E2E benchmark is running
+        if (string.Equals(
+                Environment.GetEnvironmentVariable("BENCHMARK_MODE"),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            marketMaker = marketMaker.WithEnvironment("BENCHMARK_MODE", "true");
+        }
 
         // 6. Trade Processor
         var tradeProcessor = builder.AddProject<FalconFX_TradeProcessor>("trade-processor")

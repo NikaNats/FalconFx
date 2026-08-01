@@ -22,7 +22,7 @@ public class RealPipelineBenchmark
         Console.WriteLine("=================================================");
 
         // Arrange mock Kafka producer and core Matching Engine worker
-        var kafkaProducer = Substitute.For<IProducer<Null, byte[]>>();
+        var kafkaProducer = Substitute.For<IProducer<long, TradeExecuted>>();
         var engineWorker = new EngineWorker(NullLogger<EngineWorker>.Instance, kafkaProducer);
 
         using var cts = new CancellationTokenSource();

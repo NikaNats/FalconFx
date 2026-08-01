@@ -1,7 +1,10 @@
 ﻿using Confluent.Kafka;
 using FalconFX.MatchingEngine.Models;
+using FalconFX.Protos;
+using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Xunit;
 
 namespace FalconFX.MatchingEngine.Tests.Unit;
 
@@ -10,8 +13,8 @@ public class EngineWorkerTests
     [Fact]
     public async Task EngineWorker_ShouldProcessOrders_AndPublishTradesToKafka()
     {
-        // Arrange
-        var kafkaProducer = Substitute.For<IProducer<Null, byte[]>>();
+        // Arrange: Mock the typed Kafka producer required by EngineWorker
+        var kafkaProducer = Substitute.For<IProducer<long, TradeExecuted>>();
         var logger = NullLogger<EngineWorker>.Instance;
         var engineWorker = new EngineWorker(logger, kafkaProducer);
 
@@ -29,10 +32,15 @@ public class EngineWorkerTests
 
         await engineWorker.StopAsync(cts.Token);
 
-        // Assert: Check Kafka Producer invocation
+        // Assert: Verify Kafka Producer invocation with typed TradeExecuted message
         kafkaProducer.Received(1).Produce(
             Arg.Is<string>("trades"),
-            Arg.Is<Message<Null, byte[]>>(msg => msg.Value != null && msg.Value.Length > 0)
+            Arg.Is<Message<long, TradeExecuted>>(msg =>
+                msg.Value != null &&
+                msg.Value.Price == 100 &&
+                msg.Value.Quantity == 10 &&
+                msg.Value.MakerOrderId == 1 &&
+                msg.Value.TakerOrderId == 2)
         );
     }
 }

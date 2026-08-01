@@ -11,15 +11,21 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
-// 1. Configure Kafka Consumer for Trade Ingestion
-builder.AddKafkaConsumer<Null, byte[]>("kafka", settings =>
+// 1. Configure High-Throughput Kafka Consumer
+builder.AddKafkaConsumer<Ignore, byte[]>("kafka", settings =>
 {
     settings.Config.GroupId = "trade-processor-group";
     settings.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
-    settings.Config.EnableAutoCommit = false;
+    settings.Config.EnableAutoCommit = true;
+    settings.Config.AutoCommitIntervalMs = 1000;
+    settings.Config.EnableAutoOffsetStore = false;
+    settings.Config.FetchMinBytes = 1;             // Zero fetch delay
+    settings.Config.FetchMaxBytes = 10_000_000;    // 10MB batch capacity
+    settings.Config.MaxPollIntervalMs = 300000;
+    settings.Config.SocketTimeoutMs = 30000;
 });
 
-// 2. Configure PostgreSQL DbContext with GSSAPI Negotiation Disabled
+// 2. Configure PostgreSQL (Disable GSSAPI & SSL on local connection string)
 builder.AddNpgsqlDbContext<TradeDbContext>("trade-db", settings =>
 {
     var rawConn = builder.Configuration.GetConnectionString("trade-db");
@@ -27,17 +33,14 @@ builder.AddNpgsqlDbContext<TradeDbContext>("trade-db", settings =>
     {
         var csBuilder = new NpgsqlConnectionStringBuilder(rawConn)
         {
-            // Disable GSSAPI Kerberos negotiation to prevent PostgreSQL authentication warnings
-            GssEncryptionMode = GssEncryptionMode.Disable
+            GssEncryptionMode = GssEncryptionMode.Disable,
+            SslMode = SslMode.Disable
         };
         settings.ConnectionString = csBuilder.ConnectionString;
     }
 });
 
-// 3. Register Redis Client for Real-Time Market Ticker Broadcasting
 builder.AddRedisClient("redis");
-
-// 4. Register TradeProcessor Background Worker Service
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

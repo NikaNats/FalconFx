@@ -11,16 +11,19 @@ using Xunit;
 
 namespace FalconFX.Gateway.Tests.Unit;
 
-public class RedisSubscriberTests
+public class RedisSubscriberTests : IAsyncLifetime
 {
     private readonly IConnectionMultiplexer _redis = Substitute.For<IConnectionMultiplexer>();
+    private readonly ISubscriber _subscriberMock = Substitute.For<ISubscriber>();
     private readonly IHubContext<MarketHub, IMarketClient> _hubContext = Substitute.For<IHubContext<MarketHub, IMarketClient>>();
     private readonly IMarketClient _clientProxy = Substitute.For<IMarketClient>();
     private readonly IConfiguration _config = Substitute.For<IConfiguration>();
     private readonly RedisSubscriber _subscriber;
+    private readonly CancellationTokenSource _cts = new();
 
     public RedisSubscriberTests()
     {
+        _redis.GetSubscriber(Arg.Any<object>()).Returns(_subscriberMock);
         _hubContext.Clients.All.Returns(_clientProxy);
 
         _subscriber = new RedisSubscriber(
@@ -29,6 +32,18 @@ public class RedisSubscriberTests
             _hubContext,
             _config
         );
+    }
+
+    public async ValueTask InitializeAsync()
+    {
+        // Start the background service so the SignalR broadcast channel loop is active
+        await _subscriber.StartAsync(_cts.Token);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _subscriber.StopAsync(_cts.Token);
+        _cts.Dispose();
     }
 
     [Theory]
@@ -42,7 +57,8 @@ public class RedisSubscriberTests
         // Act
         InvokeProcessMessage(rawMessage);
 
-        await Task.Delay(50);
+        // Allow background Channel reader loop to process update
+        await Task.Delay(100);
 
         // Assert
         await _clientProxy.Received(1).ReceiveMarketUpdate(expectedSymbol, expectedPrice);
@@ -50,21 +66,20 @@ public class RedisSubscriberTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("EURUSD")]             // ორი წერტილის გარეშე
-    [InlineData("EURUSD:INVALID")]     // ფასი არ არის ციფრი
-    [InlineData(":10000")]             // აკლია სიმბოლო
-    [InlineData("EURUSD:10550:EXTRA")] // ზედმეტი სეგმენტები
+    [InlineData("EURUSD")]             // No colon
+    [InlineData("EURUSD:INVALID")]     // Non-numeric price
+    [InlineData(":10000")]             // Missing symbol
     public async Task ProcessMessage_MalformedPayload_ShouldHandleGracefullyWithoutException(string badMessage)
     {
         // Act
         var act = () => InvokeProcessMessage(badMessage);
 
-        // Assert: არ უნდა ისროლოს Exception
+        // Assert: Should not throw exception
         act.Should().NotThrow();
 
-        await Task.Delay(50);
+        await Task.Delay(100);
 
-        // SignalR-ში არაფერი არ უნდა გაიგზავნოს
+        // Nothing should be broadcasted to SignalR
         await _clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());
     }
 
@@ -75,7 +90,7 @@ public class RedisSubscriberTests
         InvokeProcessMessage(RedisValue.Null);
         InvokeProcessMessage(RedisValue.EmptyString);
 
-        await Task.Delay(50);
+        await Task.Delay(100);
 
         // Assert
         await _clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());

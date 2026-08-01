@@ -11,7 +11,7 @@ namespace FalconFX.IntegrationTests.Infrastructure;
 
 public class KafkaIntegrationTests : IAsyncLifetime
 {
-    // Testcontainers-ის მიერ რეალური Kafka Docker კონტეინერის გაშვება
+    // Real Kafka Docker container initialized via Testcontainers
     private readonly KafkaContainer _kafkaContainer = new KafkaBuilder("confluentinc/cp-kafka:7.6.0")
         .Build();
 
@@ -43,14 +43,14 @@ public class KafkaIntegrationTests : IAsyncLifetime
 
         using var cts = new CancellationTokenSource();
 
-        // Act 1: ამუშავდეს MarketMaker Worker 5 წამით
+        // Act 1: Run MarketMaker Worker for 5 seconds
         var workerTask = worker.StartAsync(cts.Token);
         await Task.Delay(5000);
         await cts.CancelAsync();
 
         try { await workerTask; } catch (OperationCanceledException) { }
 
-        // Act 2: წავიკითხოთ შეტყობინებები Kafka-დან
+        // Act 2: Consume messages from Kafka topic 'orders' (Using long key deserializer)
         var consumerConfig = new ConsumerConfig
         {
             BootstrapServers = bootstrapServers,
@@ -58,13 +58,17 @@ public class KafkaIntegrationTests : IAsyncLifetime
             AutoOffsetReset = AutoOffsetReset.Earliest
         };
 
-        using var consumer = new ConsumerBuilder<Null, byte[]>(consumerConfig).Build();
+        using var consumer = new ConsumerBuilder<long, byte[]>(consumerConfig)
+            .SetKeyDeserializer(Deserializers.Int64)
+            .Build();
+
         consumer.Subscribe("orders");
 
         var consumeResult = consumer.Consume(TimeSpan.FromSeconds(10));
 
-        // Assert: Kafka-ში უნდა იყოს ჩაწერილი ვალიდური Protobuf SubmitOrderRequest
-        consumeResult.Should().NotBeNull("MarketMaker-ს უნდა გაეგზავნა შეტყობინებები Kafka-ში");
+        // Assert: Verify Kafka contains valid Protobuf SubmitOrderRequest with OrderId Key
+        consumeResult.Should().NotBeNull("MarketMaker should produce order messages to Kafka");
+        consumeResult.Message.Key.Should().BeGreaterThan(0, "Kafka message key should contain valid OrderId");
         consumeResult.Message.Value.Should().NotBeNull();
 
         var orderRequest = SubmitOrderRequest.Parser.ParseFrom(consumeResult.Message.Value);

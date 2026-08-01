@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Confluent.Kafka;
@@ -8,161 +9,154 @@ using Google.Protobuf;
 namespace FalconFX.MatchingEngine;
 
 /// <summary>
-///     Ultra-low latency, single-threaded core Matching Engine worker.
-///     Processes inbound order channels and executes zero-allocation price-time priority matching.
+/// Ultra-low latency, single-threaded Matching Engine.
+/// Zero-allocation matching + high-throughput trade publishing.
 /// </summary>
 public sealed class EngineWorker : BackgroundService
 {
-    private const string TradeTopic = "trades";
-    private const int StatsReportIntervalMs = 1000;
-
-    // Inbound order queue: SingleReader = true optimization for single-threaded matching hot path
-    private readonly Channel<Order> _inputChannel = Channel.CreateUnbounded<Order>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    private const string ServiceName = "MatchingEngine";
+    private const string TradesTopic = "trades";
 
     private readonly ILogger<EngineWorker> _logger;
+    private readonly IProducer<long, TradeExecuted> _tradeProducer;
+    private readonly OrderBook _orderBook;
 
-    // Pre-allocated OrderBook with 10M order node capacity (Intrusive Doubly-Linked List)
-    private readonly OrderBook _orderBook = new(10_000_000);
+    private readonly Channel<Order> _orderChannel = Channel.CreateBounded<Order>(new BoundedChannelOptions(1_000_000)
+    {
+        FullMode = BoundedChannelFullMode.Wait,
+        SingleReader = true,
+        SingleWriter = false
+    });
 
-    // Outbound trade execution queue: SingleReader = true, SingleWriter = true
-    private readonly Channel<Trade> _outputChannel = Channel.CreateUnbounded<Trade>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
-
-    private readonly IProducer<Null, byte[]> _producer;
-
-    // Lock-free atomic execution counters (Mutated exclusively on the single matching thread)
     private long _ordersProcessed;
-    private long _tradesCreated;
+    private long _tradesMatched;
 
-    public EngineWorker(ILogger<EngineWorker> logger, IProducer<Null, byte[]> producer)
+    public EngineWorker(ILogger<EngineWorker> logger, IProducer<long, TradeExecuted> tradeProducer)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _producer = producer ?? throw new ArgumentNullException(nameof(producer));
+        _tradeProducer = tradeProducer ?? throw new ArgumentNullException(nameof(tradeProducer));
+
+        // Pre-allocate OrderBook memory pool for 500,000 nodes
+        _orderBook = new OrderBook(500_000);
     }
 
-    /// <summary>
-    ///     Enqueues an incoming order into the high-speed execution channel.
-    ///     Thread-safe, non-blocking lock-free operation.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void EnqueueOrder(in Order order)
+    // Non-blocking try-write
+    public bool EnqueueOrder(Order order)
     {
-        _inputChannel.Writer.TryWrite(order);
+        if (_orderChannel.Writer.TryWrite(order))
+        {
+            Interlocked.Increment(ref _ordersProcessed);
+            return true;
+        }
+        return false;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    public async ValueTask EnqueueOrderAsync(Order order, CancellationToken token = default)
     {
-        _logger.LogEngineStarting();
+        await _orderChannel.Writer.WriteAsync(order, token).ConfigureAwait(false);
+        Interlocked.Increment(ref _ordersProcessed);
+    }
 
-        Instrumentation.RegisterObservableMetrics(
-            () => Volatile.Read(ref _ordersProcessed),
-            () => Volatile.Read(ref _tradesCreated)
-        );
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("🚀 {ServiceName} Starting...", ServiceName);
 
-        // Spawn trade dispatch consumer thread
-        Task.Factory.StartNew(
-            () => ProcessTradesAsync(stoppingToken),
-            stoppingToken,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
-
-        // Spawn metric reporting thread
-        Task.Factory.StartNew(
-            () => ReportStatsAsync(stoppingToken),
-            stoppingToken,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
-
-        // Run the single-threaded matching engine loop on a dedicated OS thread
-        return Task.Factory.StartNew(
-            () => RunMatchingEngineAsync(stoppingToken),
+        var engineThread = Task.Factory.StartNew(
+            () => RunMatchingLoop(stoppingToken),
             stoppingToken,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default).Unwrap();
+
+        var statsThread = Task.Factory.StartNew(
+            () => RunStatsLoop(stoppingToken),
+            stoppingToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
+
+        await Task.WhenAll(engineThread, statsThread).ConfigureAwait(false);
     }
 
-    // ═══════════════════════════════════════════
-    //  HOT LOOP — SINGLE-THREADED MATCHING ENGINE
-    // ═══════════════════════════════════════════
-    private async Task RunMatchingEngineAsync(CancellationToken token)
+    private async Task RunMatchingLoop(CancellationToken token)
     {
-        var reader = _inputChannel.Reader;
-        _logger.LogEngineLoopRunning();
+        var reader = _orderChannel.Reader;
 
-        while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
-            // Fast inner loop: drains channel buffer without CPU yield
-        while (reader.TryRead(out var order))
+        try
         {
-            _orderBook.ProcessOrder(order, trade =>
+            while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
             {
-                _outputChannel.Writer.TryWrite(trade);
+                while (reader.TryRead(out var order))
+                {
+                    _orderBook.ProcessOrder(order, trade =>
+                    {
+                        Interlocked.Increment(ref _tradesMatched);
 
-                // Direct single-threaded increment eliminates Interlocked overhead
-                _tradesCreated++;
-            });
+                        var tradeProto = new TradeExecuted
+                        {
+                            MakerOrderId = trade.MakerOrderId,
+                            TakerOrderId = trade.TakerOrderId,
+                            Price = trade.Price,
+                            Quantity = trade.Quantity,
+                            Symbol = "EURUSD",
+                            Timestamp = trade.Timestamp
+                        };
 
-            _ordersProcessed++;
-        }
-    }
+                        var message = new Message<long, TradeExecuted>
+                        {
+                            Key = trade.MakerOrderId,
+                            Value = tradeProto
+                        };
 
-    // ═══════════════════════════════════════════
-    //  OUTPUT THREAD — KAFKA PRODUCER
-    // ═══════════════════════════════════════════
-    private async Task ProcessTradesAsync(CancellationToken token)
-    {
-        var reader = _outputChannel.Reader;
-        var protoTrade = new TradeExecuted();
-
-        while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
-        while (reader.TryRead(out var trade))
-        {
-            // Mutate reusable Protobuf object in-place
-            protoTrade.Id = trade.Timestamp;
-            protoTrade.MakerOrderId = trade.MakerOrderId;
-            protoTrade.TakerOrderId = trade.TakerOrderId;
-            protoTrade.Price = trade.Price;
-            protoTrade.Quantity = trade.Quantity;
-            protoTrade.Timestamp = trade.Timestamp;
-            protoTrade.Symbol = "EURUSD";
-
-            // Exact-sized byte payload per message ensures librdkafka memory safety
-            var msgSize = protoTrade.CalculateSize();
-            var payload = new byte[msgSize];
-            protoTrade.WriteTo(payload.AsSpan());
-
-            // Fire-and-forget produce to Kafka
-            try
-            {
-                _producer.Produce(TradeTopic, new Message<Null, byte[]> { Value = payload });
-            }
-            catch (ProduceException<Null, byte[]> ex)
-            {
-                _logger.LogTradeProduceError(ex.Error.Reason);
+                        while (!token.IsCancellationRequested)
+                        {
+                            try
+                            {
+                                _tradeProducer.Produce(TradesTopic, message);
+                                break;
+                            }
+                            catch (ProduceException<long, TradeExecuted> ex) when (ex.Error.Code == ErrorCode.Local_QueueFull)
+                            {
+                                _tradeProducer.Poll(TimeSpan.FromMilliseconds(1));
+                            }
+                        }
+                    });
+                }
             }
         }
+        catch (OperationCanceledException) { }
     }
 
-    // ═══════════════════════════════════════════
-    //  METRICS REPORTING TASK
-    // ═══════════════════════════════════════════
-    private async Task ReportStatsAsync(CancellationToken token)
+    private async Task RunStatsLoop(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        try
         {
-            await Task.Delay(StatsReportIntervalMs, token).ConfigureAwait(false);
-
-            var orders = Volatile.Read(ref _ordersProcessed);
-            var trades = Volatile.Read(ref _tradesCreated);
-
-            _logger.LogEngineStats(orders, trades);
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(1000, token).ConfigureAwait(false);
+                _logger.LogInformation("STATS: Processed: {Orders:N0} orders | Matches: {Trades:N0} trades",
+                    Interlocked.Read(ref _ordersProcessed), Interlocked.Read(ref _tradesMatched));
+            }
         }
+        catch (OperationCanceledException) { }
     }
 }
 
-// ═══════════════════════════════════════════
-//  ZERO-ALLOCATION LOGGING EXTENSIONS
-// ═══════════════════════════════════════════
+/// <summary>
+/// High-performance Protobuf serializer using uninitialized buffers.
+/// </summary>
+public sealed class TradeExecutedSerializer : ISerializer<TradeExecuted>
+{
+    public static readonly TradeExecutedSerializer Instance = new();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public byte[] Serialize(TradeExecuted data, SerializationContext context)
+    {
+        var size = data.CalculateSize();
+        var buffer = GC.AllocateUninitializedArray<byte>(size);
+        data.WriteTo(buffer);
+        return buffer;
+    }
+}
+
 internal static partial class EngineLogExtensions
 {
     [LoggerMessage(EventId = 101, Level = LogLevel.Information, Message = "Matching Engine Starting...")]
