@@ -1,18 +1,20 @@
 # FalconFX 🚀
 
-[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
-[![Aspire](https://img.shields.io/badge/Aspire-13.0-512BD4?logo=dotnet)](https://learn.microsoft.com/dotnet/aspire/)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
+[![Aspire](https://img.shields.io/badge/Aspire-13.4-512BD4?logo=dotnet)](https://learn.microsoft.com/dotnet/aspire/)
 [![Kafka](https://img.shields.io/badge/Kafka-Event%20Streaming-231F20?logo=apache-kafka)](https://kafka.apache.org/)
 [![Redis](https://img.shields.io/badge/Redis-Real--time-DC382D?logo=redis)](https://redis.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Time--Series-4169E1?logo=postgresql)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker)](https://www.docker.com/)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Observability-000000?logo=opentelemetry)](https://opentelemetry.io/)
 
-A production-grade **High-Frequency Trading (HFT) Simulation** engine built on **.NET 9** and **.NET Aspire**, demonstrating enterprise-level microservices architecture with extreme performance optimizations for financial systems.
+A production-grade **High-Frequency Trading (HFT) Simulation** engine built on **.NET 10** and **.NET Aspire 13.4**, demonstrating enterprise-level microservices architecture with low-latency performance optimizations for financial systems.
 
 ## 🎯 Overview
 
-FalconFX simulates a complete electronic trading ecosystem capable of processing **300,000+ orders per second** with **sub-millisecond latency**. The system employs zero-allocation matching algorithms, lock-free data structures, and event-driven architecture to achieve high throughput while maintaining reliability and observability.
+FalconFX simulates an electronic trading ecosystem. Under BenchmarkDotNet micro-benchmarks, the core matching engine algorithm handles **~61.3 Million orders per second** at a single-core level with **~16.3 nanoseconds** of latency. On a fully distributed network level with active Kafka event streams and PostgreSQL bulk persistence, the end-to-end system achieves a throughput of up to **66,500+ orders per second** with **15-microsecond (0.015 ms)** average latency.
+
+The system employs zero-allocation matching algorithms, lock-free data structures, and event-driven architecture to maintain performance, durability, and observability.
 
 ## 🏗️ Architecture
 
@@ -101,7 +103,7 @@ sequenceDiagram
     deactivate K2
 
     activate TP
-    TP->>TP: Batch (1000 trades)
+    TP->>TP: Batch (10000 trades)
 
     par Parallel Processing
         TP->>PG: Bulk Insert Trades
@@ -118,12 +120,12 @@ sequenceDiagram
 
 ### 🎯 Zero-Allocation Matching Engine
 
-The core matching engine eliminates GC pressure through advanced memory management techniques:
+The core matching engine minimizes GC pressure through targeted memory management techniques:
 
-- **Struct-Based Order Pool**: Pre-allocated array of `OrderNode` structs (10M capacity) prevents heap allocations during hot path execution
-- **Intrusive Linked Lists**: Orders maintain `Next` and `Prev` indices instead of references, enabling O(1) insertion/removal without allocations
-- **Price-Level Arrays**: Fixed-size arrays for bid/ask levels (prices 90-110) enable constant-time price lookups
-- **Callback-Based Trade Publishing**: Delegates avoid lambda allocations in tight loops
+- **Struct-Based Order Pool**: Pre-allocated array of `OrderNode` structs (up to 10M capacity) prevents heap allocations during hot path execution.
+- **Intrusive Linked Lists**: Orders maintain `Next` and `Prev` indices instead of heap-allocated references, enabling O(1) insertion/removal without allocations.
+- **Price-Level Arrays**: Fixed-size arrays for bid/ask levels enable constant-time price lookups.
+- **Callback-Based Trade Publishing**: Delegates avoid lambda allocations in tight loops.
 
 ```csharp
 // Example: Zero-allocation order processing
@@ -136,43 +138,45 @@ public void ProcessOrder(Order order, TradeCallback onTrade)
 
 ### 🔥 High Throughput Architecture
 
-- **System.Threading.Channels**: Lock-free producer-consumer queues for order ingestion and trade publishing
-- **Batch Processing**: TradeProcessor accumulates 1,000 trades before bulk database insert
+- **System.Threading.Channels**: Lock-free producer-consumer queues for order ingestion and trade publishing.
+- **Batch Processing**: TradeProcessor accumulates up to 10,000 trades before a bulk database insert.
+- **PostgreSQL Binary COPY**: Uses low-level `BeginBinaryImportAsync` for bulk writes, bypassing EF Core overhead.
 - **Kafka Optimization**:
-  - LZ4 compression for network efficiency
-  - Leader acknowledgment for balanced durability/speed
-  - Configurable linger times for batching
-- **Redis Fire-and-Forget**: Non-blocking ticker updates prevent I/O bottlenecks
+  - LZ4 compression for network efficiency.
+  - Leader acknowledgment for balanced durability and speed.
+  - Configurable linger times for batching.
+- **Redis Fire-and-Forget**: Non-blocking ticker updates prevent I/O bottlenecks.
 
 ### 🛡️ Resilience & Reliability
 
-- **WaitForBrokerReady**: Health checks ensure Kafka is fully initialized before service startup
-- **Topic Auto-Creation**: `EnsureTopicExistsAsync` utility prevents "unknown topic" errors
-- **Retry Policies**: Graceful handling of transient failures in Kafka consumption
-- **Service Dependencies**: `.WaitFor()` ensures correct startup order (e.g., Engine waits for Kafka)
+- **WaitForBrokerReady**: Health checks ensure Kafka is fully initialized before service startup.
+- **Topic Auto-Creation**: `EnsureTopicExistsAsync` utility prevents "unknown topic" errors.
+- **Retry Policies**: Graceful handling of transient failures in Kafka consumption.
+- **Service Dependencies**: `.WaitFor()` ensures correct startup order (e.g., Engine waits for Kafka).
 
 ### 📊 Observability (OpenTelemetry)
 
-Complete distributed tracing and metrics via OpenTelemetry:
+Distributed tracing and metrics via OpenTelemetry:
 
-- **Custom Metrics**: `orders_processed`, `trades_created` counters
-- **Distributed Traces**: End-to-end transaction visibility across Kafka and microservices
-- **Aspire Dashboard**: Real-time visualization of all telemetry data
-- **Batched OTLP Export**: 5-second intervals prevent telemetry overhead
+- **Custom Metrics**: `orders_processed`, `trades_created` counters.
+- **Distributed Traces**: End-to-end transaction visibility across Kafka and microservices.
+- **Aspire Dashboard**: Visualization of all telemetry data.
+- **Batched OTLP Export**: 5-second intervals prevent telemetry overhead in tight execution loops.
 
 ## 🏆 Performance Metrics
 
-Based on production-equivalent load testing:
+Based on automated E2E system testing (under BenchmarkDotNet and Aspire test runners):
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| **Order Throughput** | 300,000+ orders/sec | Sustained load with tight price spreads |
-| **Matching Latency** | < 1ms (p99) | Hot path execution time |
-| **Trade Persistence** | 1,000 trades/batch | Bulk insert to PostgreSQL |
-| **Memory Allocation** | ~0 bytes/order | Zero-alloc matching algorithm |
-| **GC Pressure** | Minimal | Gen0 only, no Gen1/Gen2 collections |
+| **Core Throughput (L1)** | ~61,300,000 orders/sec | Pure C# OrderBook Algorithm |
+| **Pipeline Throughput (L2)** | ~2,317,000 orders/sec | Protobuf parsing + Channels + Engine Worker |
+| **System E2E Throughput (L3)**| Up to 66,500 orders/sec | End-to-end network, Kafka, and PostgreSQL persistence |
+| **E2E Avg Latency** | ~0.015 ms (15 μs) | Latency per order in clean E2E runs |
+| **Memory Allocation** | ~0 bytes/order | Inner matching path execution |
+| **GC Pressure** | Minimal | Gen0/1/2 = 0 in the hot path |
 
-*Tested on: AMD Ryzen 7 / 16GB RAM / Docker Desktop*
+*Tested on: Intel Core i7-12700H (14C/20T) | Windows 11 (25H2)*
 
 ## 📦 Project Structure
 
@@ -202,29 +206,28 @@ FalconFX/
 ### Microservices Overview
 
 #### 1. **MarketMaker** (Order Generator)
-- Produces synthetic orders at high velocity (100 orders per batch)
-- Tight price spread (99-101) ensures frequent matches
-- Uses Protobuf for efficient serialization
-- Publishes to `orders` Kafka topic
+- Produces synthetic orders at high velocity.
+- Tight price spread (99-101) ensures frequent matches.
+- Uses Protobuf for efficient serialization.
+- Publishes to `orders` Kafka topic.
 
 #### 2. **MatchingEngine** (Core Logic)
-- Consumes orders from Kafka (`orders` topic)
-- Implements Price-Time Priority matching algorithm
-- Publishes executed trades to Kafka (`trades` topic)
-- Custom metrics exported to Aspire Dashboard
-- Supports both Kafka and gRPC ingestion
+- Consumes orders from Kafka (`orders` topic).
+- Implements Price-Time Priority matching algorithm.
+- Publishes executed trades to Kafka (`trades` topic).
+- Custom metrics exported to Aspire Dashboard.
+- Supports both Kafka and gRPC ingestion.
 
 #### 3. **TradeProcessor** (Persistence Layer)
-- Consumes trades from Kafka (`trades` topic)
-- Batch inserts to PostgreSQL (1,000 trades/batch)
-- Updates Redis tickers in fire-and-forget mode
-- TimescaleDB-ready schema with timestamp indexing
+- Consumes trades from Kafka (`trades` topic).
+- Batch inserts to PostgreSQL (10,000 trades/batch).
+- Updates Redis tickers and publishes to SignalR channel.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ### Run with .NET Aspire
@@ -245,16 +248,16 @@ FalconFX/
 
    The dashboard URL will be displayed in the console (typically `https://localhost:17171`)
 
-   - **Structured Logs**: Real-time log aggregation from all services
-   - **Metrics**: Live charts for order throughput and trade volume
-   - **Traces**: Distributed transaction timelines
-   - **Resources**: Container health and resource usage
+   - **Structured Logs**: Real-time log aggregation from all services.
+   - **Metrics**: Live charts for order throughput and trade volume.
+   - **Traces**: Distributed transaction timelines.
+   - **Resources**: Container health and resource usage.
 
 4. **Explore Infrastructure UIs**
 
-   - **Kafka UI**: `http://localhost:8080` - Topic inspection and consumer lag monitoring
-   - **pgAdmin**: `http://localhost:5050` - PostgreSQL query interface
-   - **Redis Commander**: `http://localhost:8081` - Real-time key-value viewer
+   - **Kafka UI**: `http://localhost:8080` - Topic inspection and consumer lag monitoring.
+   - **pgAdmin**: `http://localhost:5050` - PostgreSQL query interface.
+   - **Redis Commander**: `http://localhost:8081` - Real-time key-value viewer.
 
 ### Verify System Health
 
@@ -294,7 +297,7 @@ private readonly OrderBook _orderBook = new(10_000_000); // 10M orders
 Optimize for database write performance:
 
 ```csharp
-private const int BatchSize = 1000; // Trades per DB flush
+private const int BatchSize = 10000; // Trades per DB flush (Binary COPY)
 ```
 
 ## 🧪 Testing
@@ -316,8 +319,8 @@ dotnet test
 
 ### OpenTelemetry Metrics
 
-- `orders_processed` (Counter): Total orders consumed by MatchingEngine
-- `trades_created` (Counter): Total trades executed
+- `orders_processed` (Counter): Total orders consumed by MatchingEngine.
+- `trades_created` (Counter): Total trades executed.
 
 ### Custom Activities
 
@@ -328,54 +331,20 @@ Distributed traces include custom spans for:
 
 ### Aspire Dashboard Features
 
-1. **Live Metrics**: Real-time graphs of throughput and latency
-2. **Distributed Traces**: End-to-end request tracking across Kafka
-3. **Structured Logs**: Centralized logging with filtering and search
-4. **Resource Health**: Container status and dependency graph
+1. **Live Metrics**: Real-time graphs of throughput and latency.
+2. **Distributed Traces**: End-to-end request tracking across Kafka.
+3. **Structured Logs**: Centralized logging with filtering and search.
+4. **Resource Health**: Container status and dependency graph.
 
 ## 🛠️ Technology Stack
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Framework** | .NET 9 | Latest performance improvements |
-| **Orchestration** | .NET Aspire 13.0 | Service orchestration and observability |
+| **Framework** | .NET 10 | Platform features and performance improvements |
+| **Orchestration** | .NET Aspire 13.4 | Service orchestration and observability |
 | **Messaging** | Apache Kafka | Event streaming backbone |
-| **Caching** | Redis | Real-time ticker storage |
+| **Caching** | Redis | Real-time ticker storage and Pub/Sub |
 | **Database** | PostgreSQL | Time-series trade persistence |
 | **Serialization** | Protobuf | Efficient binary encoding |
 | **Telemetry** | OpenTelemetry | Distributed tracing and metrics |
 | **Containerization** | Docker | Consistent deployment environments |
-
-## 🎓 Learning Resources
-
-This project demonstrates:
-
-- **Microservices Architecture**: Service decomposition, communication patterns
-- **Event-Driven Design**: Kafka producers/consumers, event sourcing
-- **Performance Engineering**: Zero-allocation algorithms, memory pooling
-- **Observability**: OpenTelemetry instrumentation, distributed tracing
-- **.NET Aspire**: Modern cloud-native orchestration
-
-## 🤝 Contributing
-
-Contributions are welcome! Areas for enhancement:
-
-- [ ] gRPC streaming client for external order submission
-- [ ] WebSocket API for real-time ticker broadcasting
-- [ ] Advanced order types (Stop, FOK, IOC)
-- [ ] Market depth visualization dashboard
-- [ ] Kubernetes deployment manifests
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Aspire Team** for the excellent orchestration framework
-- **Confluent** for Kafka client libraries
-- **PostgreSQL** and **Redis** communities for robust infrastructure
-
----
-
-**Built with ❤️ using .NET 9 and Aspire** | [Report Issues](https://github.com/yourusername/FalconFX/issues) | [Documentation](https://github.com/yourusername/FalconFX/wiki)

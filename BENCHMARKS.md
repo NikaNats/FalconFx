@@ -11,7 +11,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **Level 1: Micro-Benchmark (BDN)** | Pure C# OrderBook Algorithm | **~61,300,000 ops/sec** | **16.3 ns / order** | **0 B (Zero-Alloc)** |
 | **Level 2: Internal Async Pipeline** | Protobuf SerDe + Channels + Thread | **~2,317,000 ops/sec** | **0.43 μs / order** | Low Alloc |
-| **Level 3: Automated TRUE E2E System** | **Kafka Net + Engine + Postgres Binary COPY** | **5,558 - 23,374 ops/sec** | **0.043 - 0.180 ms / order** | Persistent DB |
+| **Level 3: Automated TRUE E2E System** | **Kafka Net + Engine + Postgres Binary COPY** | **5,558 - 66,500 ops/sec** | **0.015 - 0.180 ms / order** | Persistent DB |
 
 ---
 
@@ -21,9 +21,9 @@ Measures the entire distributed ecosystem over physical network sockets & infras
 `Kafka Network Producer` ➡️ `Kafka Topic (orders)` ➡️ `MatchingEngine` ➡️ `Kafka Topic (trades)` ➡️ `TradeProcessor (Binary COPY)` ➡️ `PostgreSQL Bulk Persistence`
 
 * **Automated Orchestration:** `.NET Aspire AppHost` booted, tested, dynamic endpoints resolved, and shut down automatically in-process via `Aspire.Hosting.Testing`.
-* **PostgreSQL Binary COPY Protocol:** Implemented `NpgsqlBinaryImporter` (`COPY FROM STDIN BINARY`), accelerating bulk persistence to **25,001 trades in 2.14s - 9.00s**.
-* **True E2E System Throughput:** **5,558 - 23,374 orders / sec** (Sustained network + DB persistence pipeline under parallel MarketMaker flow)
-* **True E2E Average Latency:** **0.043 - 0.180 milliseconds / order** (43 - 180 microseconds)
+* **PostgreSQL Binary COPY Protocol:** Implemented `NpgsqlBinaryImporter` (`COPY FROM STDIN BINARY`), accelerating bulk persistence of **25,000 trades in 0.75s - 9.00s**.
+* **True E2E System Throughput:** **5,558 - 66,500 orders / sec** (Sustained network + DB persistence pipeline under parallel MarketMaker flow)
+* **True E2E Average Latency:** **0.015 - 0.180 milliseconds / order** (15 - 180 microseconds)
 * **Total Executed Batch:** 50,000 orders over network sockets
 
 ---
