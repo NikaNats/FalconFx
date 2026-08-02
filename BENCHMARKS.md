@@ -1,7 +1,7 @@
 # 📊 FalconFX Performance Benchmark Report
 
 > **Environment:** Intel Core i7-12700H (14C/20T) | Windows 11 (25H2) | .NET 10.0.10 (RyuJIT AVX2)  
-> **Runner:** BenchmarkDotNet v0.15.8 & Automated Aspire E2E Harness (`Aspire.Hosting.Testing`)
+> **Runner:** BenchmarkDotNet v0.15.8, Automated Aspire E2E Harness (`Aspire.Hosting.Testing`) & High-Precision HFT Metrics Engine (`Stopwatch` QPC)
 
 ---
 
@@ -9,9 +9,52 @@
 
 | Test Level | Scope | Throughput | Latency | Memory Allocations |
 | :--- | :--- | :--- | :--- | :--- |
+| **Level 0: Advanced HFT Engine** | **Tick-to-Trade + Risk Check + CPU Pinning** | **~17,650,000 ops/sec** | **56.66 ns / order** | **0 B (Zero-Alloc)** |
 | **Level 1: Micro-Benchmark (BDN)** | Pure C# OrderBook Algorithm | **~61,300,000 ops/sec** | **16.3 ns / order** | **0 B (Zero-Alloc)** |
 | **Level 2: Internal Async Pipeline** | Protobuf SerDe + Channels + Thread | **~2,317,000 ops/sec** | **0.43 μs / order** | Low Alloc |
 | **Level 3: Automated TRUE E2E System** | **Kafka Net + Engine + Postgres Binary COPY** | **5,558 - 66,500 ops/sec** | **0.015 - 0.180 ms / order** | Persistent DB |
+
+---
+
+## 🎯 Level 0: Advanced HFT Micro-Latency & Tail Percentile Analysis
+
+Measures single-core end-to-end execution dynamics under CPU Thread Pinning (Core #2):  
+`Sequence Validation` ➡️ `Pre-Trade Risk Check` ➡️ `OrderBook Match` ➡️ `Trade Callback Execution`
+
+### 1. Pre-Trade Risk Check Micro-Benchmark (< 1 μs Target)
+* **Sample Batch Size:** 1,000,000 Orders
+* **Mean Risk Check Latency:** **13.69 nanoseconds (0.0137 μs)**
+* **p50 (Median):** **0.00 ns** (< 100 ns Timer Floor)
+* **p99:** **100.00 ns**
+* **p99.999 (Tail Latency):** **3,400.00 ns (3.40 μs)**
+* **Memory Allocation:** **0 B (Zero-Alloc Stack Execution)**
+
+---
+
+### 2. Tick-to-Trade Latency & Tail Percentile Breakdown
+* **Single-Core Throughput (MPS):** **17,650,132 orders/sec**
+* **Total Processed Orders / Trades:** 1,000,000 / 1,000,000
+* **Sequence Gaps / Drop Rate:** **0 Drops (0% Message Loss)**
+
+```text
+=======================================================================
+LATENCY PERCENTILE BREAKDOWN (Tick-to-Trade):
+  Min Latency:             0.00 ns (0.000 μs)
+  Mean Latency:            56.66 ns (0.057 μs)
+  p50 (Median):            0.00 ns (0.000 μs)
+  p90:                     100.00 ns (0.100 μs)
+  p99:                     100.00 ns (0.100 μs)
+  p99.9:                   100.00 ns (0.100 μs)
+  p99.99:                  7,900.00 ns (7.900 μs)
+  p99.999 (Tail Latency):  117,100.00 ns (117.100 μs)
+  Max Spike:               1,333,200.00 ns (1.333 ms)
+  Jitter (Std Dev):        ±1,984.48 ns (1.984 μs)
+=======================================================================
+```
+
+#### 📐 Analytical Metrics:
+* **Sub-Microsecond Execution:** 99.9% of orders process in **<= 100 nanoseconds**.
+* **Zero Jitter Boundary:** Up to `p99.9`, execution time remains deterministic without Garbage Collector interruption.
 
 ---
 
@@ -120,5 +163,5 @@ Compares Gateway Redis Pub/Sub message parsing (`"EURUSD:10550"`) using `Span<ch
 ## 🎯 Key Architectural Takeaways
 
 1. **Deterministic Latency:** Zero-Alloc architecture eliminates Garbage Collection latency spikes.
-2. **High Single-Core Capacity:** The Matching Engine processes **60M+ orders/sec** on a single CPU core.
-3. **Hardware Efficiency:** Fully leverages RyuJIT JIT compilation and AVX2 vectorization.
+2. **High Single-Core Capacity:** The Matching Engine processes **17.6M+ orders/sec** with full Pre-Trade Risk Checks and Sequence Control on a single CPU core.
+3. **Hardware Efficiency:** Fully leverages RyuJIT JIT compilation, AVX2 vectorization, and CPU Thread Pinning.
