@@ -26,7 +26,7 @@ public class EngineWorkerTests
         engineWorker.EnqueueOrder(new Order(2, OrderSide.Buy, 100, 10));
 
         // Allow async channels to drain
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         await engineWorker.StopAsync(cts.Token);
 

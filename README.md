@@ -302,12 +302,19 @@ private const int BatchSize = 10000; // Trades per DB flush (Binary COPY)
 
 ## 🧪 Testing
 
-Run unit tests for the matching engine:
+Run the complete test suite with Microsoft Testing Platform (MTP):
 
 ```bash
-cd tests/MatchingEngine.Tests
-dotnet test
+dotnet test --solution FalconFX.slnx
 ```
+
+To generate xUnit v3 TRX reports, use the MTP reporter option:
+
+```bash
+dotnet test --solution FalconFX.slnx --report-xunit-trx
+```
+
+The VSTest-only `--logger` option is not supported by the repository's MTP configuration.
 
 **Test Coverage:**
 - ✅ Full match scenarios

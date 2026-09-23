@@ -11,11 +11,12 @@ public class AppHostLifecycleTests
     public async Task AppHost_ShouldStartSuccessfully_AndGatewayHealthEndpointShouldReturnOK()
     {
         // Arrange: Aspire AppHost-ის ორკესტრაციის ჩატვირთვა
+        var cancellationToken = TestContext.Current.CancellationToken;
         var appHost = await DistributedApplicationTestingBuilder
-            .CreateAsync<AppHostProgram>();
+            .CreateAsync<AppHostProgram>(cancellationToken);
 
-        await using var app = await appHost.BuildAsync();
-        await app.StartAsync();
+        await using var app = await appHost.BuildAsync(cancellationToken);
+        await app.StartAsync(cancellationToken);
 
         // Act: Gateway სერვისის HTTP კლიენტის შექმნა
         var httpClient = app.CreateHttpClient("gateway");

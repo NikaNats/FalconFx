@@ -40,11 +40,12 @@ public class KafkaIntegrationTests : IAsyncLifetime
         var logger = NullLogger<Worker>.Instance;
         var worker = new Worker(logger, config);
 
-        using var cts = new CancellationTokenSource();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         // Act 1: Run MarketMaker Worker for 5 seconds
         var workerTask = worker.StartAsync(cts.Token);
-        await Task.Delay(5000);
+        await Task.Delay(5000, cancellationToken);
         await cts.CancelAsync();
 
         try

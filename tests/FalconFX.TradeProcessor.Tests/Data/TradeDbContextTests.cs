@@ -40,15 +40,16 @@ public class TradeDbContextTests : IDisposable
         }).ToList();
 
         // Act: ოპტიმიზებული ბაჩინგი
+        var cancellationToken = TestContext.Current.CancellationToken;
         _context.ChangeTracker.AutoDetectChangesEnabled = false;
         _context.Trades.AddRange(trades);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         // Assert
-        var savedCount = await _context.Trades.CountAsync();
+        var savedCount = await _context.Trades.CountAsync(cancellationToken);
         savedCount.Should().Be(1000, "1000-ვე გარიგება წარმატებით უნდა შეინახოს ბაზაში");
 
-        var firstTrade = await _context.Trades.FirstOrDefaultAsync(t => t.MakerOrderId == 1);
+        var firstTrade = await _context.Trades.FirstOrDefaultAsync(t => t.MakerOrderId == 1, cancellationToken);
         firstTrade.Should().NotBeNull();
         firstTrade!.Symbol.Should().Be("EURUSD");
     }
@@ -66,12 +67,13 @@ public class TradeDbContextTests : IDisposable
                 { Symbol = "EURUSD", Timestamp = nowTicks + 10, Price = 101, MakerOrderId = 3, TakerOrderId = 4 },
             new TradeRecord { Symbol = "GBPUSD", Timestamp = nowTicks, Price = 130, MakerOrderId = 5, TakerOrderId = 6 }
         );
-        await _context.SaveChangesAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _context.SaveChangesAsync(cancellationToken);
 
         // Act: Time-Series მოთხოვნა (Symbol + Timestamp)
         var results = await _context.Trades
             .Where(t => t.Symbol == "EURUSD" && t.Timestamp >= nowTicks)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         // Assert
         results.Should().HaveCount(2);

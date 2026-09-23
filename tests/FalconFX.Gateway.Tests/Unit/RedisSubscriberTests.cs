@@ -61,7 +61,7 @@ public class RedisSubscriberTests : IAsyncLifetime
         InvokeProcessMessage(rawMessage);
 
         // Allow background Channel reader loop to process update
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
         await _clientProxy.Received(1).ReceiveMarketUpdate(expectedSymbol, expectedPrice);
@@ -80,7 +80,7 @@ public class RedisSubscriberTests : IAsyncLifetime
         // Assert: Should not throw exception
         act.Should().NotThrow();
 
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Nothing should be broadcasted to SignalR
         await _clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());
@@ -93,7 +93,7 @@ public class RedisSubscriberTests : IAsyncLifetime
         InvokeProcessMessage(RedisValue.Null);
         InvokeProcessMessage(RedisValue.EmptyString);
 
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
         await _clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());

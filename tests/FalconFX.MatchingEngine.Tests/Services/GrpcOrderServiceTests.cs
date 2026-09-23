@@ -47,7 +47,7 @@ public class GrpcOrderServiceTests
         var response = await service.StreamOrders(requestStream, serverCallContext);
 
         // Allow async channels to drain
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
         await engineWorker.StopAsync(cts.Token);
 
         // Assert

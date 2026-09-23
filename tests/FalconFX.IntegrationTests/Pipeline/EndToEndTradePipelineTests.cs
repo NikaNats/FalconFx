@@ -11,11 +11,12 @@ public class EndToEndTradePipelineTests
     public async Task Gateway_ShouldServeWebIndexHtml_AndExposeMarketHubEndpoint()
     {
         // Arrange
+        var cancellationToken = TestContext.Current.CancellationToken;
         var appHost = await DistributedApplicationTestingBuilder
-            .CreateAsync<AppHostProgram>();
+            .CreateAsync<AppHostProgram>(cancellationToken);
 
-        await using var app = await appHost.BuildAsync();
-        await app.StartAsync();
+        await using var app = await appHost.BuildAsync(cancellationToken);
+        await app.StartAsync(cancellationToken);
 
         var httpClient = app.CreateHttpClient("gateway");
 
