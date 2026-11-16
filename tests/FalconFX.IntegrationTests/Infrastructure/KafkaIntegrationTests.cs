@@ -11,7 +11,7 @@ namespace FalconFX.IntegrationTests.Infrastructure;
 public class KafkaIntegrationTests : IAsyncLifetime
 {
     // Real Kafka Docker container initialized via Testcontainers
-    private readonly KafkaContainer _kafkaContainer = new KafkaBuilder("confluentinc/cp-kafka:7.6.0")
+    private readonly KafkaContainer _kafkaContainer = new KafkaBuilder("confluentinc/cp-kafka:7.6.12")
         .Build();
 
     public async ValueTask InitializeAsync()

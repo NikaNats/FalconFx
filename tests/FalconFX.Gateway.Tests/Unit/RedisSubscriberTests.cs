@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using FalconFX.Gateway.Hubs;
+﻿using FalconFX.Gateway.Hubs;
 using FalconFX.Gateway.Workers;
 using FluentAssertions;
 using Microsoft.AspNetCore.SignalR;
@@ -57,11 +56,19 @@ public class RedisSubscriberTests : IAsyncLifetime
     public async Task ProcessMessage_ValidPayload_ShouldBroadcastToSignalRClients(
         string rawMessage, string expectedSymbol, long expectedPrice)
     {
-        // Act
-        InvokeProcessMessage(rawMessage);
+        // Deterministic completion: the broadcast callback signals instead of polling
+        var broadcast = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _clientProxy.ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>())
+            .Returns(_ =>
+            {
+                broadcast.TrySetResult();
+                return Task.CompletedTask;
+            });
 
-        // Allow background Channel reader loop to process update
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Act
+        _subscriber.ProcessMessage(rawMessage);
+
+        await broadcast.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // Assert
         await _clientProxy.Received(1).ReceiveMarketUpdate(expectedSymbol, expectedPrice);
@@ -72,15 +79,18 @@ public class RedisSubscriberTests : IAsyncLifetime
     [InlineData("EURUSD")] // No colon
     [InlineData("EURUSD:INVALID")] // Non-numeric price
     [InlineData(":10000")] // Missing symbol
+    [InlineData("EURUSD:10550abc")] // Trailing garbage must be rejected
+    [InlineData("EURUSD:")] // Missing price
     public async Task ProcessMessage_MalformedPayload_ShouldHandleGracefullyWithoutException(string badMessage)
     {
         // Act
-        var act = () => InvokeProcessMessage(badMessage);
+        var act = () => _subscriber.ProcessMessage(badMessage);
 
         // Assert: Should not throw exception
         act.Should().NotThrow();
 
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Give the broadcast loop a bounded window to (incorrectly) deliver something
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         // Nothing should be broadcasted to SignalR
         await _clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());
@@ -90,20 +100,12 @@ public class RedisSubscriberTests : IAsyncLifetime
     public async Task ProcessMessage_NullOrEmptyRedisValue_ShouldReturnEarlyWithoutProcessing()
     {
         // Act
-        InvokeProcessMessage(RedisValue.Null);
-        InvokeProcessMessage(RedisValue.EmptyString);
+        _subscriber.ProcessMessage(RedisValue.Null);
+        _subscriber.ProcessMessage(RedisValue.EmptyString);
 
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         // Assert
         await _clientProxy.DidNotReceive().ReceiveMarketUpdate(Arg.Any<string>(), Arg.Any<long>());
-    }
-
-    private void InvokeProcessMessage(RedisValue message)
-    {
-        var method = typeof(RedisSubscriber).GetMethod("ProcessMessage",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-
-        method!.Invoke(_subscriber, new object[] { message });
     }
 }

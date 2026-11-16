@@ -11,6 +11,8 @@ public sealed class OrderPool
 
     public OrderPool(int size)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(size, 0);
+
         _memory = new OrderNode[size];
         Reset();
     }

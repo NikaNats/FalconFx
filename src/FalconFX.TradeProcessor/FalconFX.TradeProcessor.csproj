@@ -23,4 +23,8 @@
 		<ProjectReference Include="..\FalconFX.ServiceDefaults\FalconFX.ServiceDefaults.csproj" />
 		<ProjectReference Include="..\FalconFX.Protos\FalconFX.Protos.csproj" />
 	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="FalconFX.TradeProcessor.Tests" />
+	</ItemGroup>
 </Project>

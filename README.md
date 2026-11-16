@@ -12,7 +12,7 @@ A production-grade **High-Frequency Trading (HFT) Simulation** engine built on *
 
 ## 🎯 Overview
 
-FalconFX simulates an electronic trading ecosystem. Under BenchmarkDotNet micro-benchmarks, the core matching engine algorithm handles **~61.3 Million orders per second** at a single-core level with **~16.3 nanoseconds** of latency. On a fully distributed network level with active Kafka event streams and PostgreSQL bulk persistence, the end-to-end system achieves a throughput of up to **66,500+ orders per second** with **15-microsecond (0.015 ms)** average latency.
+FalconFX simulates an electronic trading ecosystem. Under BenchmarkDotNet micro-benchmarks, the core matching engine algorithm handles **~61.3 Million orders per second** at a single-core level with **~16.3 nanoseconds** of amortized time per order. On a fully distributed network level with active Kafka event streams and PostgreSQL bulk persistence, the end-to-end system sustains **~39,700 orders per second** in a representative clean run (up to **66,500+ orders/sec** observed) at **~0.025 ms amortized time per order** — the inverse of throughput, not a per-order latency. True per-trade latency is measured separately as percentiles of `InsertedAt - trade.Timestamp` read back from PostgreSQL, because network and batching effects make a single "average latency" number meaningless.
 
 The system employs zero-allocation matching algorithms, lock-free data structures, and event-driven architecture to maintain performance, durability, and observability.
 
@@ -170,9 +170,10 @@ Based on automated E2E system testing (under BenchmarkDotNet and Aspire test run
 | Metric | Value | Notes |
 |--------|-------|-------|
 | **Core Throughput (L1)** | ~61,300,000 orders/sec | Pure C# OrderBook Algorithm |
-| **Pipeline Throughput (L2)** | ~2,317,000 orders/sec | Protobuf parsing + Channels + Engine Worker |
-| **System E2E Throughput (L3)**| Up to 66,500 orders/sec | End-to-end network, Kafka, and PostgreSQL persistence |
-| **E2E Avg Latency** | ~0.015 ms (15 μs) | Latency per order in clean E2E runs |
+| **Pipeline Throughput (L2)** | ~2,891,000 orders/sec | Protobuf parsing + Channels + Engine Worker |
+| **System E2E Throughput (L3)**| ~39,700 orders/sec (up to 66,500 observed) | End-to-end network, Kafka, and PostgreSQL persistence |
+| **E2E Amortized Time / Order** | ~0.025 ms (25 μs) | Inverse throughput — **not** per-order latency |
+| **Trade → DB Latency (p50/p95/p99)** | 13.2 / 31.2 / 33.9 ms | Queried from PostgreSQL (`InsertedAt - trade.Timestamp`); excludes final COPY/commit |
 | **Memory Allocation** | ~0 bytes/order | Inner matching path execution |
 | **GC Pressure** | Minimal | Gen0/1/2 = 0 in the hot path |
 

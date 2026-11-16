@@ -1,49 +1,37 @@
-﻿using FalconFX.Protos;
+﻿using FalconFX.TradeProcessor;
 using FluentAssertions;
-using NSubstitute;
-using StackExchange.Redis;
 using Xunit;
 
 namespace FalconFX.TradeProcessor.Tests.Pipeline;
 
 public class TradeRedisTickerTests
 {
-    [Fact]
-    public async Task RedisMarketUpdate_ShouldFormatKeyAndPayloadCorrectly()
+    [Theory]
+    [InlineData("EURUSD", 10550, "EURUSD:10550")]
+    [InlineData("GBPUSD", -1, "GBPUSD:-1")]
+    [InlineData("BTCUSD", long.MaxValue, "BTCUSD:9223372036854775807")]
+    [InlineData("X", 0, "X:0")]
+    public void FormatRedisPayload_ShouldProduceSymbolColonPrice(
+        string symbol, long price, string expected)
     {
-        // Arrange
-        var redisDb = Substitute.For<IDatabase>();
-        var trade = new TradeExecuted
-        {
-            Symbol = "EURUSD",
-            Price = 10550,
-            Quantity = 100
-        };
-
-        // Act: Span-ზე დაფუძნებული სტრინგის ფორმატირება
-        Span<char> span = stackalloc char[trade.Symbol.Length + 1 + 20];
-        trade.Symbol.AsSpan().CopyTo(span);
-        span[trade.Symbol.Length] = ':';
-
-        trade.Price.TryFormat(span[(trade.Symbol.Length + 1)..], out var charsWritten);
-        var redisPayload = span[..(trade.Symbol.Length + 1 + charsWritten)].ToString();
-
-        await redisDb.StringSetAsync($"ticker:{trade.Symbol}", trade.Price, flags: CommandFlags.FireAndForget);
-        await redisDb.PublishAsync(RedisChannel.Literal("market_updates"), redisPayload, CommandFlags.FireAndForget);
+        // Act
+        var payload = Worker.FormatRedisPayload(symbol, price);
 
         // Assert
-        redisPayload.Should().Be("EURUSD:10550");
+        payload.Should().Be(expected);
+    }
 
-        await redisDb.Received(1).StringSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "ticker:EURUSD"),
-            Arg.Is<RedisValue>(v => (long)v == 10550),
-            flags: CommandFlags.FireAndForget
-        );
+    [Fact]
+    public void FormatRedisPayload_LongSymbol_ShouldNotThrow()
+    {
+        // Arrange: a symbol far longer than the old fixed stackalloc buffer
+        var symbol = new string('A', 4096);
 
-        await redisDb.Received(1).PublishAsync(
-            Arg.Is<RedisChannel>(c => c.ToString() == "market_updates"),
-            Arg.Is<RedisValue>(v => v.ToString() == "EURUSD:10550"),
-            CommandFlags.FireAndForget
-        );
+        // Act
+        var act = () => Worker.FormatRedisPayload(symbol, 100);
+
+        // Assert
+        act.Should().NotThrow();
+        act().Should().Be($"{symbol}:100");
     }
 }

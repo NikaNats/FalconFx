@@ -72,8 +72,12 @@ public static class Extensions
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation();
 
-                // Register MatchingEngine custom Meter for OTel metrics aggregation
-                metrics.AddMeter("MatchingEngine");
+                // Register every FalconFX service Meter for OTel metrics aggregation
+                metrics.AddMeter(
+                    "FalconFX.MatchingEngine",
+                    "FalconFX.MarketMaker",
+                    "FalconFX.TradeProcessor",
+                    "FalconFX.Gateway");
             })
             .WithTracing(tracing =>
             {
@@ -81,7 +85,11 @@ public static class Extensions
                     tracing.SetSampler(new AlwaysOnSampler());
 
                 tracing.AddSource(builder.Environment.ApplicationName)
-                    .AddSource("MatchingEngine")
+                    .AddSource(
+                        "FalconFX.MatchingEngine",
+                        "FalconFX.MarketMaker",
+                        "FalconFX.TradeProcessor",
+                        "FalconFX.Gateway")
                     .AddAspNetCoreInstrumentation(options =>
                     {
                         // Exclude health check endpoints from distributed traces to minimize span noise

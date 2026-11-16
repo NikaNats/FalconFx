@@ -16,6 +16,9 @@ namespace FalconFX.Gateway.Workers;
 /// </summary>
 public sealed class RedisSubscriber : BackgroundService
 {
+    private const int MaxPooledSymbols = 10_000;
+    private const int MaxSymbolChars = 64;
+
     // OpenTelemetry Metrics (2026 Observability Standard)
     private static readonly Meter GatewayMeter = new("FalconFX.Gateway");
 
@@ -56,7 +59,7 @@ public sealed class RedisSubscriber : BackgroundService
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
-            SingleWriter = true
+            SingleWriter = false
         });
     }
 
@@ -65,24 +68,38 @@ public sealed class RedisSubscriber : BackgroundService
         _logger.LogRedisSubscriberStarting();
 
         var subscriber = _redis.GetSubscriber();
+        var channel = RedisChannel.Literal("market_updates");
         _logger.LogListeningToRedisChannel("market_updates");
 
-        // Subscribe to Redis Pub/Sub channel
-        await subscriber.SubscribeAsync(
-            RedisChannel.Literal("market_updates"),
-            (_, message) => ProcessMessage(message)).ConfigureAwait(false);
+        await subscriber.SubscribeAsync(channel, (_, message) => ProcessMessage(message))
+            .ConfigureAwait(false);
 
-        // Dedicated Task for broadcasting to SignalR clients (Eliminates ThreadPool task flooding)
-        var broadcastTask = Task.Factory.StartNew(
-            () => SignalRBroadcastLoopAsync(stoppingToken),
-            stoppingToken,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).Unwrap();
+        try
+        {
+            // Dedicated Task for broadcasting to SignalR clients (Eliminates ThreadPool task flooding)
+            var broadcastTask = Task.Factory.StartNew(
+                    () => SignalRBroadcastLoopAsync(stoppingToken),
+                    stoppingToken,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default)
+                .Unwrap();
 
-        await broadcastTask.ConfigureAwait(false);
+            await broadcastTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                await subscriber.UnsubscribeAsync(channel).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best-effort subscription cleanup during teardown
+            }
+        }
     }
 
-    private void ProcessMessage(RedisValue message)
+    internal void ProcessMessage(RedisValue message)
     {
         if (message.IsNullOrEmpty) return;
 
@@ -92,29 +109,38 @@ public sealed class RedisSubscriber : BackgroundService
             var span = memory.Span;
 
             var colonIdx = span.IndexOf((byte)':');
-            if (colonIdx > 0)
+            if (colonIdx <= 0 || colonIdx == span.Length - 1) return;
+
+            var symbolBytes = span[..colonIdx];
+            var priceBytes = span[(colonIdx + 1)..];
+
+            // Require the ENTIRE price slice to be consumed: rejects "10550abc"
+            if (!Utf8Parser.TryParse(priceBytes, out long price, out var bytesConsumed) ||
+                bytesConsumed != priceBytes.Length)
+                return;
+
+            if (Encoding.UTF8.GetMaxCharCount(symbolBytes.Length) > MaxSymbolChars)
             {
-                var symbolBytes = span[..colonIdx];
-                var priceBytes = span[(colonIdx + 1)..];
-
-                if (Utf8Parser.TryParse(priceBytes, out long price, out _))
-                {
-                    Span<char> charBuffer = stackalloc char[32];
-                    var charCount = Encoding.UTF8.GetChars(symbolBytes, charBuffer);
-                    ReadOnlySpan<char> symbolChars = charBuffer[..charCount];
-
-                    if (!SymbolLookup.TryGetValue(symbolChars, out var symbol))
-                    {
-                        symbol = symbolChars.ToString();
-                        SymbolPool[symbol] = symbol;
-                    }
-
-                    UpdatesReceivedCounter.Add(1);
-
-                    // Push update to Channel without spawning unmonitored ThreadPool Tasks
-                    _marketChannel.Writer.TryWrite((symbol, price));
-                }
+                _logger.LogBadMessageFormat("symbol is too long");
+                return;
             }
+
+            Span<char> charBuffer = stackalloc char[MaxSymbolChars];
+            var charCount = Encoding.UTF8.GetChars(symbolBytes, charBuffer);
+            ReadOnlySpan<char> symbolChars = charBuffer[..charCount];
+
+            if (!SymbolLookup.TryGetValue(symbolChars, out var symbol))
+            {
+                symbol = symbolChars.ToString();
+                // Bounded pool: an attacker cannot grow this dictionary without limit
+                if (SymbolPool.Count < MaxPooledSymbols)
+                    SymbolPool.TryAdd(symbol, symbol);
+            }
+
+            UpdatesReceivedCounter.Add(1);
+
+            // Push update to Channel without spawning unmonitored ThreadPool Tasks
+            _marketChannel.Writer.TryWrite((symbol, price));
         }
         catch (Exception ex)
         {
@@ -135,12 +161,14 @@ public sealed class RedisSubscriber : BackgroundService
 
                     UpdatesBroadcastedCounter.Add(1);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Suppress web client socket disconnect errors
+                    // A disconnected web client must not kill the broadcast loop, but the
+                    // failure still needs to be visible in telemetry.
+                    _logger.LogBroadcastFailure(ex.Message);
                 }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             // Graceful shutdown
         }
@@ -158,4 +186,7 @@ internal static partial class RedisSubscriberLogExtensions
 
     [LoggerMessage(EventId = 412, Level = LogLevel.Warning, Message = "Bad market_updates message format: {Reason}")]
     public static partial void LogBadMessageFormat(this ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 413, Level = LogLevel.Warning, Message = "SignalR broadcast failed: {Message}")]
+    public static partial void LogBroadcastFailure(this ILogger logger, string message);
 }

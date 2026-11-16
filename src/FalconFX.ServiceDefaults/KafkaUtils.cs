@@ -10,43 +10,46 @@ public static class KafkaUtils
     public static async Task WaitForBrokerReady(IConfiguration config, ILogger logger, CancellationToken token)
     {
         var connectionString = config.GetConnectionString("kafka");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException("Kafka connection string 'kafka' is missing or invalid.");
 
-        var configDict = new AdminClientConfig
+        var adminConfig = new AdminClientConfig
         {
             BootstrapServers = connectionString,
-            SocketTimeoutMs = 10000,
-            ApiVersionRequestTimeoutMs = 10000,
+            SocketTimeoutMs = 10_000,
+            ApiVersionRequestTimeoutMs = 10_000,
             LogConnectionClose = false
         };
 
         logger.LogInformation("⏳ Checking Kafka availability at {ConnectionString}...", connectionString);
 
+        // Build the admin client once: retries only re-issue GetMetadata, they do not
+        // recreate connections or leak native handles.
+        using var adminClient = new AdminClientBuilder(adminConfig)
+            .SetLogHandler((_, msg) =>
+            {
+                if (msg.Level < SyslogLevel.Info)
+                    logger.LogDebug("[Kafka Admin] {Message}", msg.Message);
+            })
+            .Build();
+
         while (!token.IsCancellationRequested)
         {
             try
             {
-                using var adminClient = new AdminClientBuilder(configDict)
-                    .SetLogHandler((_, msg) =>
-                    {
-                        if (msg.Level < SyslogLevel.Info)
-                            logger.LogDebug("[Kafka Admin] {Message}", msg.Message);
-                    })
-                    .Build();
-
                 var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
-
                 if (metadata.Brokers.Count > 0)
                 {
                     logger.LogInformation("✅ Kafka is READY. Found {Count} brokers.", metadata.Brokers.Count);
                     return;
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!token.IsCancellationRequested)
             {
                 logger.LogWarning("Waiting for Kafka... ({Message})", ex.Message);
             }
 
-            await Task.Delay(2000, token);
+            await Task.Delay(2000, token).ConfigureAwait(false);
         }
     }
 
@@ -57,11 +60,11 @@ public static class KafkaUtils
         int numPartitions = 1,
         short replicationFactor = 1)
     {
-        var adminConfig = new AdminClientConfig
-        {
-            BootstrapServers = config.GetConnectionString("kafka")
-        };
+        var connectionString = config.GetConnectionString("kafka");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException("Kafka connection string 'kafka' is missing or invalid.");
 
+        var adminConfig = new AdminClientConfig { BootstrapServers = connectionString };
         using var adminClient = new AdminClientBuilder(adminConfig).Build();
 
         try
@@ -78,20 +81,18 @@ public static class KafkaUtils
                 }
             };
 
-            await adminClient.CreateTopicsAsync(new[] { topicSpec });
+            await adminClient.CreateTopicsAsync([topicSpec]).ConfigureAwait(false);
             logger.LogInformation("✅ Topic '{TopicName}' created successfully with 10MB payload limit.", topicName);
+        }
+        catch (CreateTopicsException e) when (e.Results[0].Error.Code == ErrorCode.TopicAlreadyExists)
+        {
+            logger.LogInformation("👌 Topic '{TopicName}' already exists.", topicName);
         }
         catch (CreateTopicsException e)
         {
-            if (e.Results[0].Error.Code == ErrorCode.TopicAlreadyExists)
-                logger.LogInformation("👌 Topic '{TopicName}' already exists.", topicName);
-            else
-                logger.LogError("❌ Failed to create topic '{TopicName}': {ErrorReason}", topicName,
-                    e.Results[0].Error.Reason);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError("❌ Error creating topic '{TopicName}': {ExMessage}", topicName, ex.Message);
+            logger.LogError("❌ Failed to create topic '{TopicName}': {ErrorReason}",
+                topicName, e.Results[0].Error.Reason);
+            throw;
         }
     }
 }

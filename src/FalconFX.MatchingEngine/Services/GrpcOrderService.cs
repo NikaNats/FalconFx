@@ -28,7 +28,11 @@ public sealed class GrpcOrderService(
                     req.Quantity
                 );
 
-                engine.EnqueueOrder(order);
+                var envelope = new OrderEnvelope(order);
+
+                // Backpressure instead of silently dropping orders when the channel is full
+                if (!engine.TryEnqueueOrder(envelope))
+                    await engine.EnqueueOrderAsync(envelope, context.CancellationToken).ConfigureAwait(false);
             }
         }
         catch (IOException)

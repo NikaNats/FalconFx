@@ -27,6 +27,7 @@ public class TradeRecordMappingTests
 
         // Assert
         record.Should().NotBeNull();
+        record.TradeId.Should().Be(999);
         record.MakerOrderId.Should().Be(1001);
         record.TakerOrderId.Should().Be(2002);
         record.Price.Should().Be(10050);

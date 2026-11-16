@@ -10,7 +10,8 @@ public enum OrderResult : byte
 {
     Success = 0,
     Rejected_PriceOutOfRange = 1,
-    Rejected_PoolExhausted = 2
+    Rejected_PoolExhausted = 2,
+    Rejected_InvalidOrder = 3
 }
 
 /// <summary>
@@ -23,8 +24,6 @@ public sealed class OrderBook
     // Price level heads/tails stored in dense arrays for O(1) indexing
     private readonly (int Head, int Tail)[] _asks;
     private readonly (int Head, int Tail)[] _bids;
-    private readonly long _maxPrice;
-
     private readonly long _minPrice;
 
     private readonly OrderPool _pool;
@@ -53,7 +52,6 @@ public sealed class OrderBook
             throw new ArgumentOutOfRangeException(nameof(minPrice), "minPrice must be less than maxPrice.");
 
         _minPrice = minPrice;
-        _maxPrice = maxPrice;
         _priceLevels = (int)(maxPrice - minPrice + 1);
 
         _asks = new (int Head, int Tail)[_priceLevels];
@@ -64,12 +62,24 @@ public sealed class OrderBook
     }
 
     /// <summary>
+    ///     Last price at which a trade executed (-1 when no trade has happened yet).
+    ///     Kept inside the book so risk checks stay deterministic and allocation-free.
+    /// </summary>
+    public long LastTradedPrice { get; private set; } = -1;
+
+    /// <summary>
     ///     Processes an incoming order against the order book.
     ///     Matches opposite orders or adds remaining quantity to book. Zero heap allocations.
+    ///     <paramref name="timestampTicks" /> is supplied by the caller so the matching core never
+    ///     reads the wall clock inside the hot loop (deterministic + faster).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public OrderResult ProcessOrder(Order incomingOrder, TradeCallback onTrade)
+    public OrderResult ProcessOrder(Order incomingOrder, TradeCallback onTrade, long timestampTicks = 0)
     {
+        if (incomingOrder.RemainingQuantity <= 0 ||
+            (incomingOrder.Side != OrderSide.Buy && incomingOrder.Side != OrderSide.Sell))
+            return OrderResult.Rejected_InvalidOrder;
+
         var priceIndex = (int)(incomingOrder.Price - _minPrice);
 
         // Fast unsigned range check (0 <= priceIndex < _priceLevels)
@@ -100,7 +110,8 @@ public sealed class OrderBook
             var tradeQuantity = Math.Min(incomingOrder.RemainingQuantity, makerOrder.Quantity);
 
             // Trigger Trade Execution Callback
-            onTrade(new Trade(bestPrice, tradeQuantity, makerOrder.Id, incomingOrder.Id));
+            LastTradedPrice = bestPrice;
+            onTrade(new Trade(bestPrice, tradeQuantity, makerOrder.Id, incomingOrder.Id, timestampTicks));
 
             incomingOrder.RemainingQuantity -= tradeQuantity;
             makerOrder.Quantity -= tradeQuantity;
@@ -235,6 +246,7 @@ public sealed class OrderBook
         _askLevelCount = 0;
         _bestAskIndex = -1;
         _bestBidIndex = -1;
+        LastTradedPrice = -1;
     }
 
     /// <summary>

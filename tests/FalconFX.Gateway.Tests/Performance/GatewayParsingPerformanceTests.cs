@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Reflection;
 using FalconFX.Gateway.Hubs;
 using FalconFX.Gateway.Workers;
 using FluentAssertions;
@@ -32,13 +31,8 @@ public class GatewayParsingPerformanceTests
             config
         );
 
-        // 🚀 ოპტიმიზაცია: Reflection-ის MethodInfo გადავიყვანოთ Compiled Delegate-ში.
-        // ეს სრულად აქრობს method.Invoke-ს და new object[]-ის ოვერჰედს ციკლში.
-        var method = typeof(RedisSubscriber).GetMethod("ProcessMessage",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-
-        var processMessage = (Action<RedisValue>)Delegate.CreateDelegate(
-            typeof(Action<RedisValue>), subscriber, method!);
+        // Compiled delegate over the internal parser: no reflection in the hot loop
+        Action<RedisValue> processMessage = subscriber.ProcessMessage;
 
         RedisValue payload = "EURUSD:10550";
 

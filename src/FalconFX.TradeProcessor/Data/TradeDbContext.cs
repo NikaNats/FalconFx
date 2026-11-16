@@ -10,6 +10,10 @@ public class TradeDbContext(DbContextOptions<TradeDbContext> options) : DbContex
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<TradeRecord>()
+            .HasIndex(t => t.TradeId)
+            .IsUnique();
+
+        modelBuilder.Entity<TradeRecord>()
             .HasIndex(t => new { t.Symbol, t.Timestamp });
 
         modelBuilder.Entity<TradeRecord>()
@@ -20,6 +24,7 @@ public class TradeDbContext(DbContextOptions<TradeDbContext> options) : DbContex
 public class TradeRecord
 {
     public long Id { get; set; }
+    public long TradeId { get; set; }
     public long MakerOrderId { get; set; }
     public long TakerOrderId { get; set; }
     public long Price { get; set; }
@@ -32,6 +37,7 @@ public class TradeRecord
     {
         return new TradeRecord
         {
+            TradeId = proto.Id,
             MakerOrderId = proto.MakerOrderId,
             TakerOrderId = proto.TakerOrderId,
             Price = proto.Price,

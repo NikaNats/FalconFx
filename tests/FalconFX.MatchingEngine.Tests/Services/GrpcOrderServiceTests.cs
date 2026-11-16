@@ -18,6 +18,14 @@ public class GrpcOrderServiceTests
         var engineWorker = new EngineWorker(NullLogger<EngineWorker>.Instance, kafkaProducer);
         var service = new GrpcOrderService(engineWorker, NullLogger<GrpcOrderService>.Instance);
 
+        var tradeProduced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        kafkaProducer
+            .When(p => p.Produce(
+                Arg.Any<string>(),
+                Arg.Any<Message<long, TradeExecuted>>(),
+                Arg.Any<Action<DeliveryReport<long, TradeExecuted>>>()))
+            .Do(_ => tradeProduced.TrySetResult());
+
         var requestStream = Substitute.For<IAsyncStreamReader<SubmitOrderRequest>>();
         var serverCallContext = Substitute.For<ServerCallContext>();
 
@@ -46,8 +54,9 @@ public class GrpcOrderServiceTests
         // Act
         var response = await service.StreamOrders(requestStream, serverCallContext);
 
-        // Allow async channels to drain
-        await Task.Delay(150, TestContext.Current.CancellationToken);
+        // Wait for the deterministic signal that the matching engine produced the trade
+        await tradeProduced.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
         await engineWorker.StopAsync(cts.Token);
 
         // Assert
@@ -56,7 +65,8 @@ public class GrpcOrderServiceTests
         // Ensure trade was executed and produced to Kafka as a typed TradeExecuted message
         kafkaProducer.Received(1).Produce(
             Arg.Is("trades"),
-            Arg.Any<Message<long, TradeExecuted>>()
+            Arg.Any<Message<long, TradeExecuted>>(),
+            Arg.Any<Action<DeliveryReport<long, TradeExecuted>>>()
         );
     }
 }

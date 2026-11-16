@@ -28,6 +28,13 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
     private readonly IConfiguration _config = config ?? throw new ArgumentNullException(nameof(config));
     private readonly ILogger<Worker> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
+    // Cached delegate: one allocation instead of one closure per produced message
+    private readonly Action<DeliveryReport<long, SubmitOrderRequest>> _deliveryHandler = report =>
+    {
+        if (report.Error.IsError)
+            logger.LogProduceError(report.Error.Reason);
+    };
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (string.Equals(
@@ -60,7 +67,9 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
 
         _logger.LogProducerStarted();
 
-        var orderId = 0L;
+        // Seed with a time-based, monotonically increasing range so order IDs stay unique
+        // across restarts and never collide with rows already persisted in PostgreSQL.
+        var orderId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000L;
         var rng = new XorShift64((ulong)DateTime.UtcNow.Ticks);
         var request = new SubmitOrderRequest();
         var message = new Message<long, SubmitOrderRequest>();
@@ -83,7 +92,7 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
 
                     try
                     {
-                        producer.Produce(TopicName, message);
+                        producer.Produce(TopicName, message, _deliveryHandler);
                     }
                     catch (ProduceException<long, SubmitOrderRequest> ex)
                     {
@@ -146,7 +155,7 @@ public sealed class Worker(ILogger<Worker> logger, IConfiguration config) : Back
             QueueBufferingMaxKbytes = 512_000,
             CompressionType = CompressionType.Lz4,
             Acks = Acks.Leader,
-            EnableDeliveryReports = false,
+            EnableDeliveryReports = true,
             MessageTimeoutMs = 5000,
             SocketTimeoutMs = 5000
         };

@@ -11,15 +11,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 // 1. Add Redis Client
+var redisConnectionString = builder.Configuration.GetConnectionString("redis");
+if (string.IsNullOrWhiteSpace(redisConnectionString))
+    throw new InvalidOperationException("Redis connection string 'redis' is missing.");
+
 builder.AddRedisClient("redis");
 
 // 2. Configure SignalR with Redis Backplane for Horizontal Scaling
-var redisConnectionString = builder.Configuration.GetConnectionString("redis");
-
 builder.Services.AddSignalR()
-    .AddStackExchangeRedis(redisConnectionString!, options =>
+    .AddStackExchangeRedis(redisConnectionString, options =>
     {
-        // (CS0618): RedisChannel.Literal გამოყენება აუქმებს Obsolete API Warning-ს
         options.Configuration.ChannelPrefix = RedisChannel.Literal("FalconFX.SignalR");
     });
 
@@ -27,14 +28,27 @@ builder.Services.AddSignalR()
 builder.Services.AddHostedService<RedisSubscriber>();
 
 // 4. CORS Policy for Frontend / React / Web Clients
+// Never combine AllowCredentials() with a wildcard/reflected origin: that enables
+// Cross-Site WebSocket Hijacking (CSWSH) against the SignalR hub.
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("GatewayCors", policy =>
     {
-        policy.SetIsOriginAllowed(_ => true)
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
+        if (allowedOrigins is { Length: > 0 })
+            policy.WithOrigins(allowedOrigins)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        else if (builder.Environment.IsDevelopment())
+            policy.WithOrigins("http://localhost:5224", "https://localhost:7139")
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        else
+            throw new InvalidOperationException(
+                "Cors:AllowedOrigins must be configured in non-development environments.");
     });
 });
 
@@ -46,7 +60,7 @@ app.MapDefaultEndpoints();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.UseCors("AllowAll");
+app.UseCors("GatewayCors");
 
 // Map SignalR Hub
 app.MapHub<MarketHub>("/markethub");

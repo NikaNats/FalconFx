@@ -135,7 +135,7 @@
     </div>
 
     <div class="meta">
-        <div>LATENCY: <span id="ping">0</span>ms</div>
+        <div>TICK INTERVAL: <span id="ping">0</span>ms</div>
         <div>VOL: INST.</div>
     </div>
 </div>
@@ -156,6 +156,7 @@
 
 // 3. UI Elements
     const priceEl = document.getElementById("priceDisplay");
+    const symbolEl = document.querySelector(".symbol");
     const statusEl = document.getElementById("connectionStatus");
     const indicator = document.getElementById("indicator");
     const pingEl = document.getElementById("ping");
@@ -165,10 +166,13 @@
 
     connection.on("ReceiveMarketUpdate",
         (symbol, rawPrice) => {
-            // Calculate Jitter
+            // Tick arrival interval (not an exchange round-trip latency)
             const now = Date.now();
             pingEl.innerText = now - lastTime;
             lastTime = now;
+
+            // The backend is the source of truth for which symbol is streaming
+            symbolEl.innerText = symbol;
 
             // Visual Scaling Logic
             // If rawPrice is 100, deviation is 0. If 101, deviation is 1.
@@ -185,6 +189,7 @@
                 priceEl.className = "down";
                 priceEl.innerText = `▼ ${formattedPrice}`;
             } else {
+                priceEl.className = "";
                 priceEl.innerText = formattedPrice;
             }
 

@@ -29,13 +29,10 @@ public class SymbolPoolTests
             config
         );
 
-        var method = typeof(RedisSubscriber).GetMethod("ProcessMessage",
-            BindingFlags.NonPublic | BindingFlags.Instance);
+        // Act: pipe EURUSD through 1000 times
+        for (var i = 0; i < 1000; i++) subscriber.ProcessMessage("EURUSD:10000");
 
-        // Act: 1000-ჯერ გავატაროთ EURUSD
-        for (var i = 0; i < 1000; i++) method!.Invoke(subscriber, new object[] { (RedisValue)"EURUSD:10000" });
-
-        // Assert: SymbolPool-ში უნდა იყოს მხოლოდ 1 ჩანაწერი
+        // Assert: SymbolPool must contain a single entry
         var symbolPoolField = typeof(RedisSubscriber).GetField("SymbolPool",
             BindingFlags.NonPublic | BindingFlags.Static);
 

@@ -45,6 +45,14 @@ public static class SystemE2EBenchmark
 
         Console.WriteLine($"✅ Kafka Address: {kafkaBootstrap}");
 
+        // A persisted Postgres volume becomes ready almost instantly, so waiting for the
+        // Trades table is no longer a proxy for "Kafka is up". Probe the broker directly.
+        if (!await WaitForKafkaAsync(kafkaBootstrap, TimeSpan.FromSeconds(60)).ConfigureAwait(false))
+        {
+            Console.WriteLine("❌ ERROR: Kafka did not become ready within 60 seconds.");
+            return;
+        }
+
         const int totalOrders = 50_000;
         const int expectedTrades = totalOrders / 2; // alternating buy/sell @ same price
 
@@ -144,7 +152,7 @@ public static class SystemE2EBenchmark
         var persisted = currentCount - initialCount;
         var totalSec = sw.Elapsed.TotalSeconds;
         var throughput = totalOrders / totalSec;
-        var latencyMs = totalSec * 1000 / totalOrders;
+        var amortizedMsPerOrder = totalSec * 1000 / totalOrders;
 
         Console.WriteLine("\n=================================================");
         Console.WriteLine("E2E BENCHMARK RESULTS");
@@ -153,8 +161,82 @@ public static class SystemE2EBenchmark
         Console.WriteLine($"Trades persisted:         {persisted:N0}");
         Console.WriteLine($"Total time:               {totalSec:F2} s");
         Console.WriteLine($"Throughput:               {throughput:N0} orders/sec");
-        Console.WriteLine($"Avg latency:              {latencyMs:F3} ms/order");
+        Console.WriteLine($"Amortized time / order:   {amortizedMsPerOrder:F3} ms/order (inverse throughput, NOT latency)");
+
+        // True per-trade latency percentiles are read from PostgreSQL, where
+        // (InsertedAt - trade.Timestamp) is the real engine-to-disk latency.
+        var percentiles = await GetLatencyPercentilesAsync(postgresConnString).ConfigureAwait(false);
+        if (percentiles is { } p)
+            Console.WriteLine(
+                $"Trade→DB latency:         p50 {p.P50:F3} ms | p95 {p.P95:F3} ms | p99 {p.P99:F3} ms");
+
         Console.WriteLine("=================================================\n");
+    }
+
+    private static async Task<bool> WaitForKafkaAsync(string bootstrapServers, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        using var adminClient = new AdminClientBuilder(new AdminClientConfig
+        {
+            BootstrapServers = bootstrapServers,
+            SocketTimeoutMs = 5_000,
+            ApiVersionRequestTimeoutMs = 5_000
+        }).Build();
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
+                if (metadata.Brokers.Count > 0)
+                {
+                    Console.WriteLine($"✅ Kafka is ready: {metadata.Brokers.Count} broker(s) reachable.");
+                    return true;
+                }
+            }
+            catch (KafkaException ex)
+            {
+                Console.WriteLine($"  ... waiting for Kafka: {ex.Error.Reason}");
+            }
+
+            await Task.Delay(1000).ConfigureAwait(false);
+        }
+
+        return false;
+    }
+
+    private static async Task<(double P50, double P95, double P99)?> GetLatencyPercentilesAsync(
+        string connectionString)
+    {
+        try
+        {
+            var csb = new NpgsqlConnectionStringBuilder(connectionString)
+            {
+                GssEncryptionMode = GssEncryptionMode.Disable
+            };
+
+            await using var conn = new NpgsqlConnection(csb.ConnectionString);
+            await conn.OpenAsync().ConfigureAwait(false);
+
+            await using var cmd = new NpgsqlCommand("""
+                                                   SELECT
+                                                       percentile_cont(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("InsertedAt" - to_timestamp(("Timestamp" - 621355968000000000) / 10000000.0))) * 1000),
+                                                       percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("InsertedAt" - to_timestamp(("Timestamp" - 621355968000000000) / 10000000.0))) * 1000),
+                                                       percentile_cont(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("InsertedAt" - to_timestamp(("Timestamp" - 621355968000000000) / 10000000.0))) * 1000)
+                                                   FROM "Trades"
+                                                   WHERE "InsertedAt" >= now() - interval '10 minutes'
+                                                   """, conn);
+
+            await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+            if (!await reader.ReadAsync().ConfigureAwait(false) || reader.IsDBNull(0))
+                return null;
+
+            return (reader.GetDouble(0), reader.GetDouble(1), reader.GetDouble(2));
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static async Task<long> GetTradeCountAsync(string connectionString, bool truncate = false)

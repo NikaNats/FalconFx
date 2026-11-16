@@ -10,14 +10,18 @@ public static class Instrumentation
     // OpenTelemetry Meter
     private static readonly Meter Meter = new(ServiceName);
 
-    // 2. Definition for Traces (Timelines)
+    // Definition for Traces (Timelines)
     public static readonly ActivitySource ActivitySource = new(ServiceName);
 
     /// <summary>
     ///     Observes counter metrics on-demand without overhead in the matching hot path.
-    ///     Prometheus/Aspire will poll these values periodically.
+    ///     The Aspire dashboard / OTLP exporter polls these values periodically.
     /// </summary>
-    public static void RegisterObservableMetrics(Func<long> getOrdersProcessed, Func<long> getTradesCreated)
+    public static void RegisterObservableMetrics(
+        Func<long> getOrdersProcessed,
+        Func<long> getTradesCreated,
+        Func<long> getRiskRejected,
+        Func<long> getBookRejected)
     {
         Meter.CreateObservableCounter(
             "orders_processed",
@@ -30,5 +34,17 @@ public static class Instrumentation
             getTradesCreated,
             "{trades}",
             "Total trades matched by the engine");
+
+        Meter.CreateObservableCounter(
+            "orders_rejected_risk",
+            getRiskRejected,
+            "{orders}",
+            "Total orders rejected by pre-trade risk checks");
+
+        Meter.CreateObservableCounter(
+            "orders_rejected_book",
+            getBookRejected,
+            "{orders}",
+            "Total orders rejected by the order book");
     }
 }

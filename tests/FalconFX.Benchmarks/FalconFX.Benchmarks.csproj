@@ -11,7 +11,6 @@
 		<PackageReference Include="BenchmarkDotNet" />
 		<PackageReference Include="Aspire.Hosting.Testing" />
 		<PackageReference Include="Npgsql" />
-		<PackageReference Include="NSubstitute" />
 	</ItemGroup>
 
 	<ItemGroup>
